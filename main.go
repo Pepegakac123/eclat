@@ -38,9 +38,8 @@ func main() {
 
 	myApp := app.NewApp(db)
 	err = wails.Run(&options.App{
-		Title:  "Eclat",
-		Width:  1024,
-		Height: 768,
+		Title:            "Eclat",
+		WindowStartState: options.Maximised,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* ✅ FIX: Średnik dodany na końcu linii! */
+@config "../../tailwind.config.js";
+
+@layer utilities {
+  /* Ukrywanie scrollbara (np. dla Sidebara) */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Nasz nowy, POMARAŃCZOWY scrollbar 🟠 */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-primary/50 rounded-full border-4 border-solid border-transparent bg-clip-content;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-primary;
+  }
+}
