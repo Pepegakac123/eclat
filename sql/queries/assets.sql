@@ -1,16 +1,36 @@
 -- name: CreateAsset :one
 INSERT INTO assets (
     scan_folder_id, file_name, file_path, file_type, file_size,
-    thumbnail_path, last_modified, last_scanned, file_hash,
-    image_width, image_height, dominant_color, bit_depth, has_alpha_channel
+    thumbnail_path, file_hash,
+    image_width, image_height, dominant_color, bit_depth, has_alpha_channel,
+    last_modified, last_scanned
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 RETURNING *;
 
--- name: GetAsset :one
+-- name: GetAssetById :one
 SELECT * FROM assets
 WHERE id = ? LIMIT 1;
+
+-- name: GetAssetByPath :one
+SELECT * FROM assets
+WHERE file_path = ? LIMIT 1;
+
+-- name: GetAssetByHash :one
+SELECT * FROM assets
+WHERE file_hash = ? AND file_hash IS NOT NULL
+LIMIT 1;
+
+-- name: UpdateAssetMetadata :one
+UPDATE assets
+SET
+    description = COALESCE(sqlc.narg('description'), description),
+    rating = COALESCE(sqlc.narg('rating'), rating),
+    is_favorite = COALESCE(sqlc.narg('is_favorite'), is_favorite),
+    thumbnail_path = COALESCE(sqlc.narg('thumbnail_path'), thumbnail_path)
+WHERE id = ?
+RETURNING *;
 
 -- name: ListAssets :many
 SELECT * FROM assets
@@ -18,11 +38,71 @@ WHERE is_deleted = 0
 ORDER BY date_added DESC
 LIMIT ? OFFSET ?;
 
--- name: CountAssets :one
-SELECT count(*) FROM assets
-WHERE is_deleted = 0;
+-- name: ListFavoriteAssets :many
+SELECT * FROM assets
+WHERE is_favorite = 1 AND is_deleted = 0
+ORDER BY date_added DESC
+LIMIT ? OFFSET ?;
+
+-- name: ListDeletedAssets :many
+SELECT * FROM assets
+WHERE is_deleted = 1
+ORDER BY deleted_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: ListUntaggedAssets :many
+SELECT a.* FROM assets a
+LEFT JOIN asset_tags at ON a.id = at.asset_id
+WHERE at.tag_id IS NULL AND a.is_deleted = 0
+GROUP BY a.id
+LIMIT ? OFFSET ?;
+
+-- name: SetAssetRating :exec
+UPDATE assets SET rating = ? WHERE id = ?;
+
+-- name: ToggleAssetFavorite :exec
+UPDATE assets SET is_favorite = NOT is_favorite WHERE id = ?;
 
 -- name: UpdateAssetScanStatus :exec
 UPDATE assets
 SET last_scanned = ?, file_size = ?, last_modified = ?
 WHERE id = ?;
+
+-- name: SoftDeleteAsset :exec
+UPDATE assets
+SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP
+WHERE id = ?;
+
+-- name: RestoreAsset :exec
+UPDATE assets
+SET is_deleted = 0, deleted_at = NULL
+WHERE id = ?;
+
+-- name: DeleteAssetPermanent :exec
+DELETE FROM assets WHERE id = ?;
+
+-- name: DeleteAssetByFolder :exec
+DELETE FROM assets WHERE scan_folder_id = ?;
+
+-- name: GetLibraryStats :one
+SELECT
+    COUNT(*) as total_count,
+    COALESCE(SUM(file_size), 0) as total_size,
+    MAX(last_scanned) as last_scan
+FROM assets
+WHERE is_deleted = 0;
+
+-- name: GetSidebarStats :one
+SELECT
+    (SELECT COUNT(*) FROM assets WHERE is_deleted = 0) as all_count,
+    (SELECT COUNT(*) FROM assets WHERE is_favorite = 1 AND is_deleted = 0) as favorites_count,
+    (SELECT COUNT(*) FROM assets WHERE is_deleted = 1) as trash_count,
+    (SELECT COUNT(DISTINCT a.id)
+     FROM assets a
+     LEFT JOIN asset_tags at ON a.id = at.asset_id
+     WHERE at.tag_id IS NULL AND a.is_deleted = 0) as uncategorized_count;
+
+ -- name: GetAllColors :many
+SELECT DISTINCT dominant_color
+FROM assets
+WHERE is_deleted = 0 AND dominant_color IS NOT NULL AND dominant_color != '';

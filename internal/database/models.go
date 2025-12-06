@@ -34,10 +34,49 @@ type Asset struct {
 	DeletedAt       sql.NullTime   `json:"deleted_at"`
 }
 
+type AssetMaterialSet struct {
+	AssetID       int64 `json:"asset_id"`
+	MaterialSetID int64 `json:"material_set_id"`
+}
+
+type AssetTag struct {
+	AssetID int64 `json:"asset_id"`
+	TagID   int64 `json:"tag_id"`
+}
+
+type MaterialSet struct {
+	ID             int64          `json:"id"`
+	Name           string         `json:"name"`
+	Description    sql.NullString `json:"description"`
+	CoverAssetID   sql.NullInt64  `json:"cover_asset_id"`
+	CustomCoverUrl sql.NullString `json:"custom_cover_url"`
+	CustomColor    sql.NullString `json:"custom_color"`
+	DateAdded      time.Time      `json:"date_added"`
+	LastModified   time.Time      `json:"last_modified"`
+}
+
+type SavedSearch struct {
+	ID         int64     `json:"id"`
+	Name       string    `json:"name"`
+	FilterJson string    `json:"filter_json"`
+	DateAdded  time.Time `json:"date_added"`
+}
+
 type ScanFolder struct {
 	ID          int64        `json:"id"`
 	Path        string       `json:"path"`
 	IsActive    bool         `json:"is_active"`
 	LastScanned sql.NullTime `json:"last_scanned"`
 	DateAdded   time.Time    `json:"date_added"`
+}
+
+type SystemSetting struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+type Tag struct {
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	DateCreated time.Time `json:"date_created"`
 }

@@ -6,14 +6,55 @@ package database
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
-	CountAssets(ctx context.Context) (int64, error)
+	AddAssetToMaterialSet(ctx context.Context, arg AddAssetToMaterialSetParams) error
+	AddTagToAsset(ctx context.Context, arg AddTagToAssetParams) error
+	ClearTagsFromAsset(ctx context.Context, assetID int64) error
 	CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset, error)
-	GetAsset(ctx context.Context, id int64) (Asset, error)
+	CreateMaterialSet(ctx context.Context, arg CreateMaterialSetParams) (MaterialSet, error)
+	CreateSavedSearch(ctx context.Context, arg CreateSavedSearchParams) (SavedSearch, error)
+	CreateScanFolder(ctx context.Context, path string) (ScanFolder, error)
+	CreateTag(ctx context.Context, name string) (Tag, error)
+	DeleteAssetByFolder(ctx context.Context, scanFolderID sql.NullInt64) error
+	DeleteAssetPermanent(ctx context.Context, id int64) error
+	DeleteMaterialSet(ctx context.Context, id int64) error
+	DeleteSavedSearch(ctx context.Context, id int64) error
+	GetAssetByHash(ctx context.Context, fileHash sql.NullString) (Asset, error)
+	GetAssetById(ctx context.Context, id int64) (Asset, error)
+	GetAssetByPath(ctx context.Context, filePath string) (Asset, error)
+	GetLibraryStats(ctx context.Context) (GetLibraryStatsRow, error)
+	GetMaterialSetById(ctx context.Context, id int64) (MaterialSet, error)
+	GetScanFolderByPath(ctx context.Context, path string) (ScanFolder, error)
+	GetSidebarStats(ctx context.Context) (GetSidebarStatsRow, error)
+	GetSystemSetting(ctx context.Context, key string) (string, error)
+	GetTagByName(ctx context.Context, name string) (Tag, error)
+	GetTagsForAsset(ctx context.Context, assetID int64) ([]Tag, error)
 	ListAssets(ctx context.Context, arg ListAssetsParams) ([]Asset, error)
+	ListAssetsInMaterialSet(ctx context.Context, arg ListAssetsInMaterialSetParams) ([]Asset, error)
+	ListDeletedAssets(ctx context.Context, arg ListDeletedAssetsParams) ([]Asset, error)
+	ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssetsParams) ([]Asset, error)
+	ListMaterialSets(ctx context.Context) ([]ListMaterialSetsRow, error)
+	ListSavedSearches(ctx context.Context) ([]SavedSearch, error)
+	ListScanFolders(ctx context.Context) ([]ScanFolder, error)
+	ListTags(ctx context.Context) ([]ListTagsRow, error)
+	ListUntaggedAssets(ctx context.Context, arg ListUntaggedAssetsParams) ([]Asset, error)
+	RemoveAssetFromMaterialSet(ctx context.Context, arg RemoveAssetFromMaterialSetParams) error
+	RemoveTagFromAsset(ctx context.Context, arg RemoveTagFromAssetParams) error
+	RestoreAsset(ctx context.Context, id int64) error
+	RestoreScanFolder(ctx context.Context, id int64) error
+	SetAssetRating(ctx context.Context, arg SetAssetRatingParams) error
+	SetSystemSetting(ctx context.Context, arg SetSystemSettingParams) error
+	SoftDeleteAsset(ctx context.Context, id int64) error
+	SoftDeleteScanFolder(ctx context.Context, id int64) error
+	ToggleAssetFavorite(ctx context.Context, id int64) error
+	UpdateAssetMetadata(ctx context.Context, arg UpdateAssetMetadataParams) (Asset, error)
 	UpdateAssetScanStatus(ctx context.Context, arg UpdateAssetScanStatusParams) error
+	UpdateMaterialSet(ctx context.Context, arg UpdateMaterialSetParams) error
+	UpdateScanFolderLastScanned(ctx context.Context, id int64) error
+	UpdateScanFolderStatus(ctx context.Context, arg UpdateScanFolderStatusParams) error
 }
 
 var _ Querier = (*Queries)(nil)

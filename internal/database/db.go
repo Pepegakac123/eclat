@@ -24,29 +24,159 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
-	if q.countAssetsStmt, err = db.PrepareContext(ctx, countAssets); err != nil {
-		return nil, fmt.Errorf("error preparing query CountAssets: %w", err)
+	if q.addAssetToMaterialSetStmt, err = db.PrepareContext(ctx, addAssetToMaterialSet); err != nil {
+		return nil, fmt.Errorf("error preparing query AddAssetToMaterialSet: %w", err)
+	}
+	if q.addTagToAssetStmt, err = db.PrepareContext(ctx, addTagToAsset); err != nil {
+		return nil, fmt.Errorf("error preparing query AddTagToAsset: %w", err)
+	}
+	if q.clearTagsFromAssetStmt, err = db.PrepareContext(ctx, clearTagsFromAsset); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearTagsFromAsset: %w", err)
 	}
 	if q.createAssetStmt, err = db.PrepareContext(ctx, createAsset); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateAsset: %w", err)
 	}
-	if q.getAssetStmt, err = db.PrepareContext(ctx, getAsset); err != nil {
-		return nil, fmt.Errorf("error preparing query GetAsset: %w", err)
+	if q.createMaterialSetStmt, err = db.PrepareContext(ctx, createMaterialSet); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateMaterialSet: %w", err)
+	}
+	if q.createSavedSearchStmt, err = db.PrepareContext(ctx, createSavedSearch); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateSavedSearch: %w", err)
+	}
+	if q.createScanFolderStmt, err = db.PrepareContext(ctx, createScanFolder); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateScanFolder: %w", err)
+	}
+	if q.createTagStmt, err = db.PrepareContext(ctx, createTag); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateTag: %w", err)
+	}
+	if q.deleteAssetByFolderStmt, err = db.PrepareContext(ctx, deleteAssetByFolder); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAssetByFolder: %w", err)
+	}
+	if q.deleteAssetPermanentStmt, err = db.PrepareContext(ctx, deleteAssetPermanent); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAssetPermanent: %w", err)
+	}
+	if q.deleteMaterialSetStmt, err = db.PrepareContext(ctx, deleteMaterialSet); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteMaterialSet: %w", err)
+	}
+	if q.deleteSavedSearchStmt, err = db.PrepareContext(ctx, deleteSavedSearch); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteSavedSearch: %w", err)
+	}
+	if q.getAssetByHashStmt, err = db.PrepareContext(ctx, getAssetByHash); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAssetByHash: %w", err)
+	}
+	if q.getAssetByIdStmt, err = db.PrepareContext(ctx, getAssetById); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAssetById: %w", err)
+	}
+	if q.getAssetByPathStmt, err = db.PrepareContext(ctx, getAssetByPath); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAssetByPath: %w", err)
+	}
+	if q.getLibraryStatsStmt, err = db.PrepareContext(ctx, getLibraryStats); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLibraryStats: %w", err)
+	}
+	if q.getMaterialSetByIdStmt, err = db.PrepareContext(ctx, getMaterialSetById); err != nil {
+		return nil, fmt.Errorf("error preparing query GetMaterialSetById: %w", err)
+	}
+	if q.getScanFolderByPathStmt, err = db.PrepareContext(ctx, getScanFolderByPath); err != nil {
+		return nil, fmt.Errorf("error preparing query GetScanFolderByPath: %w", err)
+	}
+	if q.getSidebarStatsStmt, err = db.PrepareContext(ctx, getSidebarStats); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSidebarStats: %w", err)
+	}
+	if q.getSystemSettingStmt, err = db.PrepareContext(ctx, getSystemSetting); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSystemSetting: %w", err)
+	}
+	if q.getTagByNameStmt, err = db.PrepareContext(ctx, getTagByName); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTagByName: %w", err)
+	}
+	if q.getTagsForAssetStmt, err = db.PrepareContext(ctx, getTagsForAsset); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTagsForAsset: %w", err)
 	}
 	if q.listAssetsStmt, err = db.PrepareContext(ctx, listAssets); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAssets: %w", err)
 	}
+	if q.listAssetsInMaterialSetStmt, err = db.PrepareContext(ctx, listAssetsInMaterialSet); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAssetsInMaterialSet: %w", err)
+	}
+	if q.listDeletedAssetsStmt, err = db.PrepareContext(ctx, listDeletedAssets); err != nil {
+		return nil, fmt.Errorf("error preparing query ListDeletedAssets: %w", err)
+	}
+	if q.listFavoriteAssetsStmt, err = db.PrepareContext(ctx, listFavoriteAssets); err != nil {
+		return nil, fmt.Errorf("error preparing query ListFavoriteAssets: %w", err)
+	}
+	if q.listMaterialSetsStmt, err = db.PrepareContext(ctx, listMaterialSets); err != nil {
+		return nil, fmt.Errorf("error preparing query ListMaterialSets: %w", err)
+	}
+	if q.listSavedSearchesStmt, err = db.PrepareContext(ctx, listSavedSearches); err != nil {
+		return nil, fmt.Errorf("error preparing query ListSavedSearches: %w", err)
+	}
+	if q.listScanFoldersStmt, err = db.PrepareContext(ctx, listScanFolders); err != nil {
+		return nil, fmt.Errorf("error preparing query ListScanFolders: %w", err)
+	}
+	if q.listTagsStmt, err = db.PrepareContext(ctx, listTags); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTags: %w", err)
+	}
+	if q.listUntaggedAssetsStmt, err = db.PrepareContext(ctx, listUntaggedAssets); err != nil {
+		return nil, fmt.Errorf("error preparing query ListUntaggedAssets: %w", err)
+	}
+	if q.removeAssetFromMaterialSetStmt, err = db.PrepareContext(ctx, removeAssetFromMaterialSet); err != nil {
+		return nil, fmt.Errorf("error preparing query RemoveAssetFromMaterialSet: %w", err)
+	}
+	if q.removeTagFromAssetStmt, err = db.PrepareContext(ctx, removeTagFromAsset); err != nil {
+		return nil, fmt.Errorf("error preparing query RemoveTagFromAsset: %w", err)
+	}
+	if q.restoreAssetStmt, err = db.PrepareContext(ctx, restoreAsset); err != nil {
+		return nil, fmt.Errorf("error preparing query RestoreAsset: %w", err)
+	}
+	if q.restoreScanFolderStmt, err = db.PrepareContext(ctx, restoreScanFolder); err != nil {
+		return nil, fmt.Errorf("error preparing query RestoreScanFolder: %w", err)
+	}
+	if q.setAssetRatingStmt, err = db.PrepareContext(ctx, setAssetRating); err != nil {
+		return nil, fmt.Errorf("error preparing query SetAssetRating: %w", err)
+	}
+	if q.setSystemSettingStmt, err = db.PrepareContext(ctx, setSystemSetting); err != nil {
+		return nil, fmt.Errorf("error preparing query SetSystemSetting: %w", err)
+	}
+	if q.softDeleteAssetStmt, err = db.PrepareContext(ctx, softDeleteAsset); err != nil {
+		return nil, fmt.Errorf("error preparing query SoftDeleteAsset: %w", err)
+	}
+	if q.softDeleteScanFolderStmt, err = db.PrepareContext(ctx, softDeleteScanFolder); err != nil {
+		return nil, fmt.Errorf("error preparing query SoftDeleteScanFolder: %w", err)
+	}
+	if q.toggleAssetFavoriteStmt, err = db.PrepareContext(ctx, toggleAssetFavorite); err != nil {
+		return nil, fmt.Errorf("error preparing query ToggleAssetFavorite: %w", err)
+	}
+	if q.updateAssetMetadataStmt, err = db.PrepareContext(ctx, updateAssetMetadata); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateAssetMetadata: %w", err)
+	}
 	if q.updateAssetScanStatusStmt, err = db.PrepareContext(ctx, updateAssetScanStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAssetScanStatus: %w", err)
+	}
+	if q.updateMaterialSetStmt, err = db.PrepareContext(ctx, updateMaterialSet); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateMaterialSet: %w", err)
+	}
+	if q.updateScanFolderLastScannedStmt, err = db.PrepareContext(ctx, updateScanFolderLastScanned); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateScanFolderLastScanned: %w", err)
+	}
+	if q.updateScanFolderStatusStmt, err = db.PrepareContext(ctx, updateScanFolderStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateScanFolderStatus: %w", err)
 	}
 	return &q, nil
 }
 
 func (q *Queries) Close() error {
 	var err error
-	if q.countAssetsStmt != nil {
-		if cerr := q.countAssetsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing countAssetsStmt: %w", cerr)
+	if q.addAssetToMaterialSetStmt != nil {
+		if cerr := q.addAssetToMaterialSetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing addAssetToMaterialSetStmt: %w", cerr)
+		}
+	}
+	if q.addTagToAssetStmt != nil {
+		if cerr := q.addTagToAssetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing addTagToAssetStmt: %w", cerr)
+		}
+	}
+	if q.clearTagsFromAssetStmt != nil {
+		if cerr := q.clearTagsFromAssetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearTagsFromAssetStmt: %w", cerr)
 		}
 	}
 	if q.createAssetStmt != nil {
@@ -54,9 +184,94 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing createAssetStmt: %w", cerr)
 		}
 	}
-	if q.getAssetStmt != nil {
-		if cerr := q.getAssetStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getAssetStmt: %w", cerr)
+	if q.createMaterialSetStmt != nil {
+		if cerr := q.createMaterialSetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createMaterialSetStmt: %w", cerr)
+		}
+	}
+	if q.createSavedSearchStmt != nil {
+		if cerr := q.createSavedSearchStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createSavedSearchStmt: %w", cerr)
+		}
+	}
+	if q.createScanFolderStmt != nil {
+		if cerr := q.createScanFolderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createScanFolderStmt: %w", cerr)
+		}
+	}
+	if q.createTagStmt != nil {
+		if cerr := q.createTagStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createTagStmt: %w", cerr)
+		}
+	}
+	if q.deleteAssetByFolderStmt != nil {
+		if cerr := q.deleteAssetByFolderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAssetByFolderStmt: %w", cerr)
+		}
+	}
+	if q.deleteAssetPermanentStmt != nil {
+		if cerr := q.deleteAssetPermanentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAssetPermanentStmt: %w", cerr)
+		}
+	}
+	if q.deleteMaterialSetStmt != nil {
+		if cerr := q.deleteMaterialSetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteMaterialSetStmt: %w", cerr)
+		}
+	}
+	if q.deleteSavedSearchStmt != nil {
+		if cerr := q.deleteSavedSearchStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteSavedSearchStmt: %w", cerr)
+		}
+	}
+	if q.getAssetByHashStmt != nil {
+		if cerr := q.getAssetByHashStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAssetByHashStmt: %w", cerr)
+		}
+	}
+	if q.getAssetByIdStmt != nil {
+		if cerr := q.getAssetByIdStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAssetByIdStmt: %w", cerr)
+		}
+	}
+	if q.getAssetByPathStmt != nil {
+		if cerr := q.getAssetByPathStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAssetByPathStmt: %w", cerr)
+		}
+	}
+	if q.getLibraryStatsStmt != nil {
+		if cerr := q.getLibraryStatsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLibraryStatsStmt: %w", cerr)
+		}
+	}
+	if q.getMaterialSetByIdStmt != nil {
+		if cerr := q.getMaterialSetByIdStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getMaterialSetByIdStmt: %w", cerr)
+		}
+	}
+	if q.getScanFolderByPathStmt != nil {
+		if cerr := q.getScanFolderByPathStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getScanFolderByPathStmt: %w", cerr)
+		}
+	}
+	if q.getSidebarStatsStmt != nil {
+		if cerr := q.getSidebarStatsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSidebarStatsStmt: %w", cerr)
+		}
+	}
+	if q.getSystemSettingStmt != nil {
+		if cerr := q.getSystemSettingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSystemSettingStmt: %w", cerr)
+		}
+	}
+	if q.getTagByNameStmt != nil {
+		if cerr := q.getTagByNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTagByNameStmt: %w", cerr)
+		}
+	}
+	if q.getTagsForAssetStmt != nil {
+		if cerr := q.getTagsForAssetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTagsForAssetStmt: %w", cerr)
 		}
 	}
 	if q.listAssetsStmt != nil {
@@ -64,9 +279,114 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAssetsStmt: %w", cerr)
 		}
 	}
+	if q.listAssetsInMaterialSetStmt != nil {
+		if cerr := q.listAssetsInMaterialSetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAssetsInMaterialSetStmt: %w", cerr)
+		}
+	}
+	if q.listDeletedAssetsStmt != nil {
+		if cerr := q.listDeletedAssetsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listDeletedAssetsStmt: %w", cerr)
+		}
+	}
+	if q.listFavoriteAssetsStmt != nil {
+		if cerr := q.listFavoriteAssetsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listFavoriteAssetsStmt: %w", cerr)
+		}
+	}
+	if q.listMaterialSetsStmt != nil {
+		if cerr := q.listMaterialSetsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listMaterialSetsStmt: %w", cerr)
+		}
+	}
+	if q.listSavedSearchesStmt != nil {
+		if cerr := q.listSavedSearchesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listSavedSearchesStmt: %w", cerr)
+		}
+	}
+	if q.listScanFoldersStmt != nil {
+		if cerr := q.listScanFoldersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listScanFoldersStmt: %w", cerr)
+		}
+	}
+	if q.listTagsStmt != nil {
+		if cerr := q.listTagsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTagsStmt: %w", cerr)
+		}
+	}
+	if q.listUntaggedAssetsStmt != nil {
+		if cerr := q.listUntaggedAssetsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listUntaggedAssetsStmt: %w", cerr)
+		}
+	}
+	if q.removeAssetFromMaterialSetStmt != nil {
+		if cerr := q.removeAssetFromMaterialSetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing removeAssetFromMaterialSetStmt: %w", cerr)
+		}
+	}
+	if q.removeTagFromAssetStmt != nil {
+		if cerr := q.removeTagFromAssetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing removeTagFromAssetStmt: %w", cerr)
+		}
+	}
+	if q.restoreAssetStmt != nil {
+		if cerr := q.restoreAssetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing restoreAssetStmt: %w", cerr)
+		}
+	}
+	if q.restoreScanFolderStmt != nil {
+		if cerr := q.restoreScanFolderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing restoreScanFolderStmt: %w", cerr)
+		}
+	}
+	if q.setAssetRatingStmt != nil {
+		if cerr := q.setAssetRatingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setAssetRatingStmt: %w", cerr)
+		}
+	}
+	if q.setSystemSettingStmt != nil {
+		if cerr := q.setSystemSettingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setSystemSettingStmt: %w", cerr)
+		}
+	}
+	if q.softDeleteAssetStmt != nil {
+		if cerr := q.softDeleteAssetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing softDeleteAssetStmt: %w", cerr)
+		}
+	}
+	if q.softDeleteScanFolderStmt != nil {
+		if cerr := q.softDeleteScanFolderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing softDeleteScanFolderStmt: %w", cerr)
+		}
+	}
+	if q.toggleAssetFavoriteStmt != nil {
+		if cerr := q.toggleAssetFavoriteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing toggleAssetFavoriteStmt: %w", cerr)
+		}
+	}
+	if q.updateAssetMetadataStmt != nil {
+		if cerr := q.updateAssetMetadataStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateAssetMetadataStmt: %w", cerr)
+		}
+	}
 	if q.updateAssetScanStatusStmt != nil {
 		if cerr := q.updateAssetScanStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateAssetScanStatusStmt: %w", cerr)
+		}
+	}
+	if q.updateMaterialSetStmt != nil {
+		if cerr := q.updateMaterialSetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateMaterialSetStmt: %w", cerr)
+		}
+	}
+	if q.updateScanFolderLastScannedStmt != nil {
+		if cerr := q.updateScanFolderLastScannedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateScanFolderLastScannedStmt: %w", cerr)
+		}
+	}
+	if q.updateScanFolderStatusStmt != nil {
+		if cerr := q.updateScanFolderStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateScanFolderStatusStmt: %w", cerr)
 		}
 	}
 	return err
@@ -106,23 +426,103 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                        DBTX
-	tx                        *sql.Tx
-	countAssetsStmt           *sql.Stmt
-	createAssetStmt           *sql.Stmt
-	getAssetStmt              *sql.Stmt
-	listAssetsStmt            *sql.Stmt
-	updateAssetScanStatusStmt *sql.Stmt
+	db                              DBTX
+	tx                              *sql.Tx
+	addAssetToMaterialSetStmt       *sql.Stmt
+	addTagToAssetStmt               *sql.Stmt
+	clearTagsFromAssetStmt          *sql.Stmt
+	createAssetStmt                 *sql.Stmt
+	createMaterialSetStmt           *sql.Stmt
+	createSavedSearchStmt           *sql.Stmt
+	createScanFolderStmt            *sql.Stmt
+	createTagStmt                   *sql.Stmt
+	deleteAssetByFolderStmt         *sql.Stmt
+	deleteAssetPermanentStmt        *sql.Stmt
+	deleteMaterialSetStmt           *sql.Stmt
+	deleteSavedSearchStmt           *sql.Stmt
+	getAssetByHashStmt              *sql.Stmt
+	getAssetByIdStmt                *sql.Stmt
+	getAssetByPathStmt              *sql.Stmt
+	getLibraryStatsStmt             *sql.Stmt
+	getMaterialSetByIdStmt          *sql.Stmt
+	getScanFolderByPathStmt         *sql.Stmt
+	getSidebarStatsStmt             *sql.Stmt
+	getSystemSettingStmt            *sql.Stmt
+	getTagByNameStmt                *sql.Stmt
+	getTagsForAssetStmt             *sql.Stmt
+	listAssetsStmt                  *sql.Stmt
+	listAssetsInMaterialSetStmt     *sql.Stmt
+	listDeletedAssetsStmt           *sql.Stmt
+	listFavoriteAssetsStmt          *sql.Stmt
+	listMaterialSetsStmt            *sql.Stmt
+	listSavedSearchesStmt           *sql.Stmt
+	listScanFoldersStmt             *sql.Stmt
+	listTagsStmt                    *sql.Stmt
+	listUntaggedAssetsStmt          *sql.Stmt
+	removeAssetFromMaterialSetStmt  *sql.Stmt
+	removeTagFromAssetStmt          *sql.Stmt
+	restoreAssetStmt                *sql.Stmt
+	restoreScanFolderStmt           *sql.Stmt
+	setAssetRatingStmt              *sql.Stmt
+	setSystemSettingStmt            *sql.Stmt
+	softDeleteAssetStmt             *sql.Stmt
+	softDeleteScanFolderStmt        *sql.Stmt
+	toggleAssetFavoriteStmt         *sql.Stmt
+	updateAssetMetadataStmt         *sql.Stmt
+	updateAssetScanStatusStmt       *sql.Stmt
+	updateMaterialSetStmt           *sql.Stmt
+	updateScanFolderLastScannedStmt *sql.Stmt
+	updateScanFolderStatusStmt      *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                        tx,
-		tx:                        tx,
-		countAssetsStmt:           q.countAssetsStmt,
-		createAssetStmt:           q.createAssetStmt,
-		getAssetStmt:              q.getAssetStmt,
-		listAssetsStmt:            q.listAssetsStmt,
-		updateAssetScanStatusStmt: q.updateAssetScanStatusStmt,
+		db:                              tx,
+		tx:                              tx,
+		addAssetToMaterialSetStmt:       q.addAssetToMaterialSetStmt,
+		addTagToAssetStmt:               q.addTagToAssetStmt,
+		clearTagsFromAssetStmt:          q.clearTagsFromAssetStmt,
+		createAssetStmt:                 q.createAssetStmt,
+		createMaterialSetStmt:           q.createMaterialSetStmt,
+		createSavedSearchStmt:           q.createSavedSearchStmt,
+		createScanFolderStmt:            q.createScanFolderStmt,
+		createTagStmt:                   q.createTagStmt,
+		deleteAssetByFolderStmt:         q.deleteAssetByFolderStmt,
+		deleteAssetPermanentStmt:        q.deleteAssetPermanentStmt,
+		deleteMaterialSetStmt:           q.deleteMaterialSetStmt,
+		deleteSavedSearchStmt:           q.deleteSavedSearchStmt,
+		getAssetByHashStmt:              q.getAssetByHashStmt,
+		getAssetByIdStmt:                q.getAssetByIdStmt,
+		getAssetByPathStmt:              q.getAssetByPathStmt,
+		getLibraryStatsStmt:             q.getLibraryStatsStmt,
+		getMaterialSetByIdStmt:          q.getMaterialSetByIdStmt,
+		getScanFolderByPathStmt:         q.getScanFolderByPathStmt,
+		getSidebarStatsStmt:             q.getSidebarStatsStmt,
+		getSystemSettingStmt:            q.getSystemSettingStmt,
+		getTagByNameStmt:                q.getTagByNameStmt,
+		getTagsForAssetStmt:             q.getTagsForAssetStmt,
+		listAssetsStmt:                  q.listAssetsStmt,
+		listAssetsInMaterialSetStmt:     q.listAssetsInMaterialSetStmt,
+		listDeletedAssetsStmt:           q.listDeletedAssetsStmt,
+		listFavoriteAssetsStmt:          q.listFavoriteAssetsStmt,
+		listMaterialSetsStmt:            q.listMaterialSetsStmt,
+		listSavedSearchesStmt:           q.listSavedSearchesStmt,
+		listScanFoldersStmt:             q.listScanFoldersStmt,
+		listTagsStmt:                    q.listTagsStmt,
+		listUntaggedAssetsStmt:          q.listUntaggedAssetsStmt,
+		removeAssetFromMaterialSetStmt:  q.removeAssetFromMaterialSetStmt,
+		removeTagFromAssetStmt:          q.removeTagFromAssetStmt,
+		restoreAssetStmt:                q.restoreAssetStmt,
+		restoreScanFolderStmt:           q.restoreScanFolderStmt,
+		setAssetRatingStmt:              q.setAssetRatingStmt,
+		setSystemSettingStmt:            q.setSystemSettingStmt,
+		softDeleteAssetStmt:             q.softDeleteAssetStmt,
+		softDeleteScanFolderStmt:        q.softDeleteScanFolderStmt,
+		toggleAssetFavoriteStmt:         q.toggleAssetFavoriteStmt,
+		updateAssetMetadataStmt:         q.updateAssetMetadataStmt,
+		updateAssetScanStatusStmt:       q.updateAssetScanStatusStmt,
+		updateMaterialSetStmt:           q.updateMaterialSetStmt,
+		updateScanFolderLastScannedStmt: q.updateScanFolderLastScannedStmt,
+		updateScanFolderStatusStmt:      q.updateScanFolderStatusStmt,
 	}
 }
