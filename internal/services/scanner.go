@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,10 +16,12 @@ import (
 
 // Scanner is a struct that keeps needed dependencies for scanning assets.
 type Scanner struct {
+	mu         sync.RWMutex
 	db         *database.Queries
 	logger     *slog.Logger
-	isScanning atomic.Bool
 	cancelFunc context.CancelFunc
+	config     ScannerConfig
+	isScanning atomic.Bool
 }
 
 // NewScanner creates a new Scanner instance
@@ -26,6 +29,7 @@ func NewScanner(db *database.Queries) *Scanner {
 	return &Scanner{
 		db:     db,
 		logger: slog.Default(),
+		config: *NewScannerConfig(),
 	}
 }
 
@@ -88,7 +92,11 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 		if d.IsDir() {
 			return nil
 		}
-		// TODO: Filter allowed extensions
+
+		ext := filepath.Ext(path)
+		if isAllowed := s.IsExtensionAllowed(ext); !isAllowed {
+			return nil
+		}
 
 		// TODO: Add thumbnail generation logic
 
