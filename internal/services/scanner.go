@@ -14,6 +14,32 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+/*
+TODO: GAP ANALYSIS - SCANNER IMPLEMENTATION
+
+1. LOGIKA BIZNESOWA (SYNCHRONIZACJA):
+   - [ ] Check Existing: Przed insertem sprawdź, czy plik o tej ścieżce istnieje w DB.
+   - [ ] Self-Healing: Jeśli pliku nie ma pod ścieżką, ale zgadza się Hash (dla przeniesionych plików) -> Zaktualizuj ścieżkę i ScanFolderID zamiast tworzyć duplikat.
+   - [ ] Soft Delete: Wykrywanie plików usuniętych z dysku lub takich, których rozszerzenie przestało być dozwolone (ustaw flagę IsDeleted).
+   - [ ] Restore: Przywracanie plików (usuwanie flagi IsDeleted), jeśli plik wrócił lub rozszerzenie znów jest dozwolone.
+   - [ ] Ignore Large Files: Pomijanie hashowania dla plików > X MB (dla wydajności).
+
+2. PRZETWARZANIE MEDIÓW (C# używa ImageSharp):
+   - [ ] Thumbnails: Integracja biblioteki do skalowania obrazów (np. "github.com/disintegration/imaging").
+   - [ ] Metadata: Wyciąganie wymiarów (width/height) i głębi kolorów.
+   - [ ] Dominant Color: Algorytm do wyliczania średniego/dominującego koloru (uproszczony histogram).
+   - [ ] Video/3D: Obsługa placeholderów dla plików, których nie umiemy otworzyć (np. .blend, .fbx).
+
+3. WYDAJNOŚĆ I CONCURRENCY:
+   - [ ] Worker Pool: Zastąpienie sekwencyjnego `WalkDir` wzorcem Producer-Consumer.
+         (WalkDir wrzuca ścieżki na kanał -> N gorutyn przetwarza pliki równolegle).
+   - [ ] Batch Insert: Zbieranie wyników i zapisywanie do DB w transakcjach po 100-500 sztuk (znacznie szybsze niż pojedyncze INSERT).
+   - [ ] Streaming Hash: Obliczanie SHA256 przy użyciu `io.Copy` (małe zużycie RAM), a nie wczytywanie całego pliku.
+
+4. UI FEEDBACK:
+   - [ ] Progress Throttling: Wysyłanie eventów do UI nie częściej niż co X milisekund (aby nie zamrozić Frontendu).
+*/
+
 // Scanner is a struct that keeps needed dependencies for scanning assets.
 type Scanner struct {
 	mu         sync.RWMutex
@@ -47,7 +73,6 @@ func (s *Scanner) StartScan(wailsCtx context.Context) error {
 		defer cancel()
 
 		s.logger.Info("Scanner Started")
-		runtime.EventsEmit(wailsCtx, "scan_status", "scanning") // Needed for UI Scanner Status Update
 
 		// Get active folders
 		folders, err := s.db.ListScanFolders(scanCtx)
@@ -55,15 +80,26 @@ func (s *Scanner) StartScan(wailsCtx context.Context) error {
 			s.logger.Error("Failed to list folders", slog.String("error", err.Error()))
 		}
 
+		s.logger.Info("Calculating total files...")
+		totalToProcess := 0
+		for _, f := range folders {
+			if scanCtx.Err() != nil {
+				s.logger.Info("Scanner cancelled by user")
+				break
+			}
+			totalToProcess += s.getAllFilesCount(f)
+		}
+		s.logger.Info("Total files to scan calculated", "count", totalToProcess)
 		totalProcessed := 0
-
+		runtime.EventsEmit(wailsCtx, "scan_status", "scanning") // Needed for UI Scanner Status Update
 		for _, f := range folders {
 			// Check for the cancellation
 			if scanCtx.Err() != nil {
 				s.logger.Info("Scanner cancelled by user")
 				break
 			}
-			s.scanDirectory(scanCtx, wailsCtx, f, &totalProcessed)
+			totalToProcess += s.getAllFilesCount(f)
+			s.scanDirectory(scanCtx, wailsCtx, f, &totalProcessed, &totalToProcess)
 		}
 		s.logger.Info("Scanner finished", "total", totalProcessed)
 		runtime.EventsEmit(wailsCtx, "scan_status", "idle")
@@ -80,7 +116,7 @@ func (s *Scanner) StopScan() {
 }
 
 // Helper function that scans a directory for files, Add them to db and updates the total count
-func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, folder database.ScanFolder, total *int) {
+func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, folder database.ScanFolder, total *int, totalToProcess *int) {
 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return filepath.SkipAll
@@ -95,6 +131,7 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 
 		ext := filepath.Ext(path)
 		if isAllowed := s.IsExtensionAllowed(ext); !isAllowed {
+			s.logger.Warn("Extension not allowed", "path", path, "extension", ext)
 			return nil
 		}
 
@@ -121,6 +158,7 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 			if *total%10 == 0 {
 				runtime.EventsEmit(wailsCtx, "scan_progress", map[string]any{
 					"current":  *total,
+					"total":    *totalToProcess,
 					"lastFile": d.Name(),
 				})
 			}
@@ -131,4 +169,25 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 	if err != nil {
 		s.logger.Error("WalkDir failed", "path", folder.Path, "error", err)
 	}
+}
+
+func (s *Scanner) getAllFilesCount(folder database.ScanFolder) int {
+	var total = 0
+	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		ext := filepath.Ext(path)
+		if s.IsExtensionAllowed(ext) {
+			total++
+		}
+		return nil
+	})
+	if err != nil {
+		s.logger.Error("WalkDir failed", "path", folder.Path, "error", err)
+	}
+	return total
 }
