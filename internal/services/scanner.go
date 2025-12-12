@@ -148,6 +148,7 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 			ThumbnailPath: "", // TODO: Generate thumbnail logic and path
 			LastModified:  info.ModTime(),
 			LastScanned:   time.Now(),
+			DominantColor: s.getDominantColor(path),
 			// TODO: Add more fields as needed
 		})
 		if dbErr != nil {
@@ -190,4 +191,19 @@ func (s *Scanner) getAllFilesCount(folder database.ScanFolder) int {
 		s.logger.Error("WalkDir failed", "path", folder.Path, "error", err)
 	}
 	return total
+}
+
+func (s *Scanner) getDominantColor(filepath string) sql.NullString {
+	dominantColor, err := calculateDominantColor(filepath)
+	if err != nil {
+		s.logger.Debug("Failed to calc dominant color", "file", filepath, "error", err)
+		return sql.NullString{}
+	}
+	closestColor, err := findClosestPaletteColor(dominantColor, s.config.PredefinedPalette)
+	if err != nil {
+		s.logger.Debug("Failed to calc dominant color", "file", filepath, "error", err)
+		return sql.NullString{}
+	}
+	return sql.NullString{String: closestColor, Valid: true}
+
 }

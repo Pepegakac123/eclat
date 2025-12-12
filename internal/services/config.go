@@ -46,11 +46,63 @@ var defaultAllowedExtensions = map[string]bool{
 }
 
 var dangerousExtensions = []string{".exe", ".dll", ".bat", ".cmd", ".sh", ".vbs", ".msi", ".com", ".scr", ".js", ".ps1", ".bin"}
+var predefinedPalette = []struct {
+	Name string
+	Hex  string
+}{
+	// --- Szarości i Podstawowe ---
+	{"Black", "#000000"},
+	{"White", "#FFFFFF"},
+	{"Dark Gray", "#404040"},
+	{"Gray", "#808080"},
+	{"Light Gray", "#C0C0C0"},
+
+	// --- Czerwienie i Róże ---
+	{"Dark Red", "#8B0000"},
+	{"Red", "#FF0000"},
+	{"Crimson", "#DC143C"}, // Karmazynowy
+	{"Pink", "#FFC0CB"},
+	{"Hot Pink", "#FF69B4"},
+	{"Coral", "#FF7F50"},
+
+	// --- Pomarańcze i Żółcie ---
+	{"Brown", "#A52A2A"},
+	{"Saddle Brown", "#8B4513"}, // Ciemny brąz (drewno)
+	{"Orange", "#FFA500"},
+	{"Gold", "#FFD700"},
+	{"Yellow", "#FFFF00"},
+	{"Beige", "#F5F5DC"}, // Beż (skóra/papier)
+
+	// --- Zielenie ---
+	{"Olive", "#808000"},
+	{"Dark Green", "#006400"},
+	{"Green", "#008000"},
+	{"Lime", "#00FF00"},
+	{"Teal", "#008080"}, // Morski ciemny
+
+	// --- Niebieskie i Cyjany ---
+	{"Cyan", "#00FFFF"},
+	{"Sky Blue", "#87CEEB"},
+	{"Blue", "#0000FF"},
+	{"Navy", "#000080"}, // Granatowy
+	{"Turquoise", "#40E0D0"},
+
+	// --- Fiolety ---
+	{"Indigo", "#4B0082"},
+	{"Purple", "#800080"},
+	{"Violet", "#EE82EE"},
+	{"Lavender", "#E6E6FA"},
+	{"Magenta", "#FF00FF"},
+}
 
 // ScannerConfig holds the configuration settings for the file scanner.
 // It determines which files are processed based on their extensions.
 type ScannerConfig struct {
 	AllowedExtensions map[string]bool `json:"allowedExtensions"`
+	PredefinedPalette []struct {
+		Name string
+		Hex  string
+	} `json:"predefinedPalette"`
 }
 
 // NewScannerConfig initializes a new configuration with default allowed extensions.
@@ -60,6 +112,7 @@ func NewScannerConfig() *ScannerConfig {
 	maps.Copy(defaultAllowedExtensionsCopy, defaultAllowedExtensions)
 	return &ScannerConfig{
 		AllowedExtensions: defaultAllowedExtensionsCopy,
+		PredefinedPalette: predefinedPalette,
 	}
 }
 
@@ -74,7 +127,19 @@ func (s *Scanner) GetConfig() ScannerConfig {
 
 	return ScannerConfig{
 		AllowedExtensions: safeMap,
+		PredefinedPalette: predefinedPalette,
 	}
+}
+
+// GetColorPalette returns the hex values of the default color palette.
+func (s *Scanner) GetColorsPaletteHex() []string {
+	palette := []string{}
+	for _, color := range s.config.PredefinedPalette {
+		if color.Hex != "" {
+			palette = append(palette, color.Hex)
+		}
+	}
+	return palette
 }
 
 // isExtensionValid is a helper method that checks if the provided extension is valid and not dangerous
