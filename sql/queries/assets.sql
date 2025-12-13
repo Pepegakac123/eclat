@@ -57,6 +57,9 @@ WHERE at.tag_id IS NULL AND a.is_deleted = 0
 GROUP BY a.id
 LIMIT ? OFFSET ?;
 
+-- name: ListAssetsPath :many
+SELECT id,file_path,last_modified FROM assets;
+
 -- name: SetAssetRating :exec
 UPDATE assets SET rating = ? WHERE id = ?;
 

@@ -96,6 +96,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAssetsInMaterialSetStmt, err = db.PrepareContext(ctx, listAssetsInMaterialSet); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAssetsInMaterialSet: %w", err)
 	}
+	if q.listAssetsPathStmt, err = db.PrepareContext(ctx, listAssetsPath); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAssetsPath: %w", err)
+	}
 	if q.listDeletedAssetsStmt, err = db.PrepareContext(ctx, listDeletedAssets); err != nil {
 		return nil, fmt.Errorf("error preparing query ListDeletedAssets: %w", err)
 	}
@@ -284,6 +287,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAssetsInMaterialSetStmt: %w", cerr)
 		}
 	}
+	if q.listAssetsPathStmt != nil {
+		if cerr := q.listAssetsPathStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAssetsPathStmt: %w", cerr)
+		}
+	}
 	if q.listDeletedAssetsStmt != nil {
 		if cerr := q.listDeletedAssetsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listDeletedAssetsStmt: %w", cerr)
@@ -452,6 +460,7 @@ type Queries struct {
 	getTagsForAssetStmt             *sql.Stmt
 	listAssetsStmt                  *sql.Stmt
 	listAssetsInMaterialSetStmt     *sql.Stmt
+	listAssetsPathStmt              *sql.Stmt
 	listDeletedAssetsStmt           *sql.Stmt
 	listFavoriteAssetsStmt          *sql.Stmt
 	listMaterialSetsStmt            *sql.Stmt
@@ -503,6 +512,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTagsForAssetStmt:             q.getTagsForAssetStmt,
 		listAssetsStmt:                  q.listAssetsStmt,
 		listAssetsInMaterialSetStmt:     q.listAssetsInMaterialSetStmt,
+		listAssetsPathStmt:              q.listAssetsPathStmt,
 		listDeletedAssetsStmt:           q.listDeletedAssetsStmt,
 		listFavoriteAssetsStmt:          q.listFavoriteAssetsStmt,
 		listMaterialSetsStmt:            q.listMaterialSetsStmt,

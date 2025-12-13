@@ -319,6 +319,39 @@ func (q *Queries) ListAssets(ctx context.Context, arg ListAssetsParams) ([]Asset
 	return items, nil
 }
 
+const listAssetsPath = `-- name: ListAssetsPath :many
+SELECT id,file_path,last_modified FROM assets
+`
+
+type ListAssetsPathRow struct {
+	ID           int64     `json:"id"`
+	FilePath     string    `json:"file_path"`
+	LastModified time.Time `json:"last_modified"`
+}
+
+func (q *Queries) ListAssetsPath(ctx context.Context) ([]ListAssetsPathRow, error) {
+	rows, err := q.query(ctx, q.listAssetsPathStmt, listAssetsPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAssetsPathRow
+	for rows.Next() {
+		var i ListAssetsPathRow
+		if err := rows.Scan(&i.ID, &i.FilePath, &i.LastModified); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDeletedAssets = `-- name: ListDeletedAssets :many
 SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at FROM assets
 WHERE is_deleted = 1

@@ -1,16 +1,67 @@
 package services
 
 import (
+	"database/sql"
 	"fmt"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
 	"math"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/EdlinOrg/prominentcolor"
 	"github.com/lucasb-eyer/go-colorful"
 )
+
+type FileType string
+
+const (
+	FileTypeImage   FileType = "image"
+	FileTypeModel   FileType = "model"
+	FileTypeTexture FileType = "texture"
+	FileTypeOther   FileType = "other"
+)
+
+// determineFileType przypisuje kategorię na podstawie rozszerzenia pliku.
+// Zakłada, że extension zawiera kropkę (np. ".jpg").
+func (s *Scanner) determineFileType(extension string) string {
+	ext := strings.ToLower(extension)
+
+	switch ext {
+	// Images
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp":
+		return string(FileTypeImage)
+
+	// 3D Models (Blender, FBX, OBJ, Maya, Max)
+	case ".blend", ".blend1", ".fbx", ".obj", ".max", ".ma", ".mb":
+		return string(FileTypeModel)
+
+	// Sculpting (ZBrush)
+	case ".ztl", ".zpr", ".zbr":
+		return string(FileTypeModel)
+
+	// Procedural/Houdini
+	case ".hip", ".hipnc", ".hiplc":
+		return string(FileTypeModel)
+
+	// Game Engine Assets (Unreal, Unity)
+	case ".uasset", ".umap", ".unity", ".prefab", ".mat", ".asset":
+		return string(FileTypeModel)
+
+	// Textures/Materials (Adobe, EXR, TIFF)
+	case ".psd", ".psb", ".ai", ".eps", ".exr", ".hdr", ".tif", ".tiff":
+		return string(FileTypeTexture)
+
+	// Substance (Adobe Substance)
+	case ".spp", ".sbs", ".sbsar":
+		return string(FileTypeTexture)
+
+	default:
+		return string(FileTypeOther)
+	}
+}
 
 // calculateDominantColor calculates the dominant color hex string using K-means clustering.
 // It analyzes the specific file path.
@@ -82,4 +133,24 @@ func findClosestPaletteColor(hexInput string, pallete []struct {
 	}
 
 	return closestHex, nil
+}
+
+func (s *Scanner) getDominantColor(path string) sql.NullString {
+	ext := filepath.Ext(path)
+	fileType := s.determineFileType(ext)
+	if fileType != string(FileTypeImage) {
+		return sql.NullString{}
+	}
+	dominantColor, err := calculateDominantColor(path)
+	if err != nil {
+		s.logger.Debug("Failed to calc dominant color", "file", path, "error", err)
+		return sql.NullString{}
+	}
+	closestColor, err := findClosestPaletteColor(dominantColor, s.config.PredefinedPalette)
+	if err != nil {
+		s.logger.Debug("Failed to normalize color to palette", "file", path, "error", err)
+		return sql.NullString{}
+	}
+	return sql.NullString{String: closestColor, Valid: true}
+
 }

@@ -34,6 +34,7 @@ type Querier interface {
 	GetTagsForAsset(ctx context.Context, assetID int64) ([]Tag, error)
 	ListAssets(ctx context.Context, arg ListAssetsParams) ([]Asset, error)
 	ListAssetsInMaterialSet(ctx context.Context, arg ListAssetsInMaterialSetParams) ([]Asset, error)
+	ListAssetsPath(ctx context.Context) ([]ListAssetsPathRow, error)
 	ListDeletedAssets(ctx context.Context, arg ListDeletedAssetsParams) ([]Asset, error)
 	ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssetsParams) ([]Asset, error)
 	ListMaterialSets(ctx context.Context) ([]ListMaterialSetsRow, error)

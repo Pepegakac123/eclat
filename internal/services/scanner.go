@@ -27,7 +27,6 @@ TODO: GAP ANALYSIS - SCANNER IMPLEMENTATION
 2. PRZETWARZANIE MEDIÓW (C# używa ImageSharp):
    - [ ] Thumbnails: Integracja biblioteki do skalowania obrazów (np. "github.com/disintegration/imaging").
    - [ ] Metadata: Wyciąganie wymiarów (width/height) i głębi kolorów.
-   - [ ] Dominant Color: Algorytm do wyliczania średniego/dominującego koloru (uproszczony histogram).
    - [ ] Video/3D: Obsługa placeholderów dla plików, których nie umiemy otworzyć (np. .blend, .fbx).
 
 3. WYDAJNOŚĆ I CONCURRENCY:
@@ -46,7 +45,7 @@ type Scanner struct {
 	db         *database.Queries
 	logger     *slog.Logger
 	cancelFunc context.CancelFunc
-	config     ScannerConfig
+	config     *ScannerConfig
 	isScanning atomic.Bool
 }
 
@@ -55,8 +54,13 @@ func NewScanner(db *database.Queries) *Scanner {
 	return &Scanner{
 		db:     db,
 		logger: slog.Default(),
-		config: *NewScannerConfig(),
+		config: NewScannerConfig(),
 	}
+}
+
+type CachedAsset struct {
+	ID           int64
+	LastModified time.Time
 }
 
 // StartScan starts the scanning process in the background
@@ -90,6 +94,13 @@ func (s *Scanner) StartScan(wailsCtx context.Context) error {
 			totalToProcess += s.getAllFilesCount(f)
 		}
 		s.logger.Info("Total files to scan calculated", "count", totalToProcess)
+
+		existingAssets, err := s.loadExistingAssets(scanCtx)
+		if err != nil {
+			s.logger.Error("Failed to load asset cache", "error", err)
+			return
+		}
+
 		totalProcessed := 0
 		runtime.EventsEmit(wailsCtx, "scan_status", "scanning") // Needed for UI Scanner Status Update
 		for _, f := range folders {
@@ -98,8 +109,7 @@ func (s *Scanner) StartScan(wailsCtx context.Context) error {
 				s.logger.Info("Scanner cancelled by user")
 				break
 			}
-			totalToProcess += s.getAllFilesCount(f)
-			s.scanDirectory(scanCtx, wailsCtx, f, &totalProcessed, &totalToProcess)
+			s.scanDirectory(scanCtx, wailsCtx, f, &totalProcessed, totalToProcess, existingAssets)
 		}
 		s.logger.Info("Scanner finished", "total", totalProcessed)
 		runtime.EventsEmit(wailsCtx, "scan_status", "idle")
@@ -116,7 +126,7 @@ func (s *Scanner) StopScan() {
 }
 
 // Helper function that scans a directory for files, Add them to db and updates the total count
-func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, folder database.ScanFolder, total *int, totalToProcess *int) {
+func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, folder database.ScanFolder, total *int, totalToProcess int, existingCache map[string]CachedAsset) {
 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return filepath.SkipAll
@@ -131,19 +141,30 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 
 		ext := filepath.Ext(path)
 		if isAllowed := s.IsExtensionAllowed(ext); !isAllowed {
-			s.logger.Warn("Extension not allowed", "path", path, "extension", ext)
+			s.logger.Debug("Extension not allowed", "path", path)
+			return nil
+		}
+		info, _ := d.Info()
+		if _, exists := existingCache[path]; exists {
+			cachedTime := existingCache[path].LastModified
+			diskTime := info.ModTime()
+			if !diskTime.Equal(cachedTime) {
+				//TODO: Update logic, robimy checka nazwy pliku i innych danych
+				// s.logger.Info("File modified, updating...", "path", path)
+			}
+			// Update procesu skanowania
+			s.updateAndEmitTotal(total, d, wailsCtx, totalToProcess)
+			//Tak to skip
 			return nil
 		}
 
 		// TODO: Add thumbnail generation logic
 
-		info, _ := d.Info()
-
 		_, dbErr := s.db.CreateAsset(ctx, database.CreateAssetParams{
 			ScanFolderID:  sql.NullInt64{Int64: int64(folder.ID), Valid: true},
 			FileName:      d.Name(),
 			FilePath:      path,
-			FileType:      "unknown", // TODO: Determine file type
+			FileType:      s.determineFileType(ext),
 			FileSize:      info.Size(),
 			ThumbnailPath: "", // TODO: Generate thumbnail logic and path
 			LastModified:  info.ModTime(),
@@ -155,14 +176,7 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 			// TODO: Handle UNIQUE constraint violation
 			s.logger.Debug("Skipping asset", "path", path, "reason", dbErr)
 		} else {
-			*total++
-			if *total%10 == 0 {
-				runtime.EventsEmit(wailsCtx, "scan_progress", map[string]any{
-					"current":  *total,
-					"total":    *totalToProcess,
-					"lastFile": d.Name(),
-				})
-			}
+			s.updateAndEmitTotal(total, d, wailsCtx, totalToProcess)
 		}
 
 		return nil
@@ -193,17 +207,34 @@ func (s *Scanner) getAllFilesCount(folder database.ScanFolder) int {
 	return total
 }
 
-func (s *Scanner) getDominantColor(filepath string) sql.NullString {
-	dominantColor, err := calculateDominantColor(filepath)
-	if err != nil {
-		s.logger.Debug("Failed to calc dominant color", "file", filepath, "error", err)
-		return sql.NullString{}
-	}
-	closestColor, err := findClosestPaletteColor(dominantColor, s.config.PredefinedPalette)
-	if err != nil {
-		s.logger.Debug("Failed to calc dominant color", "file", filepath, "error", err)
-		return sql.NullString{}
-	}
-	return sql.NullString{String: closestColor, Valid: true}
+func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsset, error) {
+	s.logger.Info("Loading assets paths to the memmory")
 
+	rows, err := s.db.ListAssetsPath(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	existing := make(map[string]CachedAsset, len(rows))
+
+	for _, row := range rows {
+		existing[row.FilePath] = CachedAsset{
+			ID:           row.ID,
+			LastModified: row.LastModified,
+		}
+	}
+	s.logger.Info("Loaded assets cache", "count", len(existing))
+	return existing, nil
+
+}
+
+func (s *Scanner) updateAndEmitTotal(total *int, d fs.DirEntry, wailsCtx context.Context, totalToProcess int) {
+	*total++
+	if *total%10 == 0 {
+		runtime.EventsEmit(wailsCtx, "scan_progress", map[string]any{
+			"current":  *total,
+			"total":    totalToProcess,
+			"lastFile": d.Name(),
+		})
+	}
 }
