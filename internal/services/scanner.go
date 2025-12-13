@@ -6,6 +6,7 @@ import (
 	"eclat/internal/database"
 	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -18,22 +19,18 @@ import (
 TODO: GAP ANALYSIS - SCANNER IMPLEMENTATION
 
 1. LOGIKA BIZNESOWA (SYNCHRONIZACJA):
-   - [ ] Check Existing: Przed insertem sprawdź, czy plik o tej ścieżce istnieje w DB.
    - [ ] Self-Healing: Jeśli pliku nie ma pod ścieżką, ale zgadza się Hash (dla przeniesionych plików) -> Zaktualizuj ścieżkę i ScanFolderID zamiast tworzyć duplikat.
    - [ ] Soft Delete: Wykrywanie plików usuniętych z dysku lub takich, których rozszerzenie przestało być dozwolone (ustaw flagę IsDeleted).
    - [ ] Restore: Przywracanie plików (usuwanie flagi IsDeleted), jeśli plik wrócił lub rozszerzenie znów jest dozwolone.
-   - [ ] Ignore Large Files: Pomijanie hashowania dla plików > X MB (dla wydajności).
 
 2. PRZETWARZANIE MEDIÓW (C# używa ImageSharp):
    - [ ] Thumbnails: Integracja biblioteki do skalowania obrazów (np. "github.com/disintegration/imaging").
-   - [ ] Metadata: Wyciąganie wymiarów (width/height) i głębi kolorów.
    - [ ] Video/3D: Obsługa placeholderów dla plików, których nie umiemy otworzyć (np. .blend, .fbx).
 
 3. WYDAJNOŚĆ I CONCURRENCY:
    - [ ] Worker Pool: Zastąpienie sekwencyjnego `WalkDir` wzorcem Producer-Consumer.
          (WalkDir wrzuca ścieżki na kanał -> N gorutyn przetwarza pliki równolegle).
    - [ ] Batch Insert: Zbieranie wyników i zapisywanie do DB w transakcjach po 100-500 sztuk (znacznie szybsze niż pojedyncze INSERT).
-   - [ ] Streaming Hash: Obliczanie SHA256 przy użyciu `io.Copy` (małe zużycie RAM), a nie wczytywanie całego pliku.
 
 4. UI FEEDBACK:
    - [ ] Progress Throttling: Wysyłanie eventów do UI nie częściej niż co X milisekund (aby nie zamrozić Frontendu).
@@ -61,6 +58,7 @@ func NewScanner(db *database.Queries) *Scanner {
 type CachedAsset struct {
 	ID           int64
 	LastModified time.Time
+	IsDeleted    bool
 }
 
 // StartScan starts the scanning process in the background
@@ -100,6 +98,7 @@ func (s *Scanner) StartScan(wailsCtx context.Context) error {
 			s.logger.Error("Failed to load asset cache", "error", err)
 			return
 		}
+		foundAssets := make(map[int64]bool)
 
 		totalProcessed := 0
 		runtime.EventsEmit(wailsCtx, "scan_status", "scanning") // Needed for UI Scanner Status Update
@@ -109,10 +108,19 @@ func (s *Scanner) StartScan(wailsCtx context.Context) error {
 				s.logger.Info("Scanner cancelled by user")
 				break
 			}
-			s.scanDirectory(scanCtx, wailsCtx, f, &totalProcessed, totalToProcess, existingAssets)
+			s.scanDirectory(scanCtx, wailsCtx, f, &totalProcessed, totalToProcess, existingAssets, foundAssets)
 		}
 		s.logger.Info("Scanner finished", "total", totalProcessed)
 		runtime.EventsEmit(wailsCtx, "scan_status", "idle")
+		s.logger.Info("Starting Cleanup Phase (Soft Delete)...")
+		for path, cached := range existingAssets {
+			if !foundAssets[cached.ID] {
+				if !cached.IsDeleted {
+					s.logger.Info("Asset missing or invalid extension - Soft Deleting", "path", path)
+					s.db.SoftDeleteAsset(scanCtx, cached.ID)
+				}
+			}
+		}
 	}()
 	return nil
 
@@ -126,7 +134,7 @@ func (s *Scanner) StopScan() {
 }
 
 // Helper function that scans a directory for files, Add them to db and updates the total count
-func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, folder database.ScanFolder, total *int, totalToProcess int, existingCache map[string]CachedAsset) {
+func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, folder database.ScanFolder, total *int, totalToProcess int, existingCache map[string]CachedAsset, foundAssets map[int64]bool) {
 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return filepath.SkipAll
@@ -145,9 +153,33 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 			return nil
 		}
 		info, _ := d.Info()
-		if _, exists := existingCache[path]; exists {
+		var imgMeta ImageMetadata
+		var fileHash string
+		fileType := s.determineFileType(ext)
+		if fileType == string(FileTypeImage) || fileType == string(FileTypeTexture) {
+			meta, err := s.extractImageMetadata(path)
+			if err == nil {
+				imgMeta = meta
+			} else {
+				s.logger.Debug("Failed to extract image metadata", "path", path, "error", err)
+			}
+		}
+
+		hash, err := s.calculateFileHash(path)
+		if err == nil {
+			fileHash = hash
+		} else {
+			s.logger.Debug("Failed to calculate hash", "path", path, "error", err)
+		}
+		if cached, exists := existingCache[path]; exists {
+			foundAssets[cached.ID] = true
 			cachedTime := existingCache[path].LastModified
 			diskTime := info.ModTime()
+			if cached.IsDeleted {
+				s.logger.Info("Restoring asset", "path", path)
+				s.db.RestoreAsset(ctx, cached.ID)
+				cached.IsDeleted = false
+			}
 			if !diskTime.Equal(cachedTime) {
 				//TODO: Update logic, robimy checka nazwy pliku i innych danych
 				// s.logger.Info("File modified, updating...", "path", path)
@@ -157,20 +189,64 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 			//Tak to skip
 			return nil
 		}
+		// --- SELF-HEALING & DUPLICATE DETECTION ---
+		if fileHash != "" {
+			existingAsset, err := s.db.GetAssetByHash(ctx, sql.NullString{String: fileHash, Valid: true})
+
+			if err == nil {
+				isMove := false
+
+				if existingAsset.IsDeleted {
+					// Przypadek 1: Plik był w koszu
+					isMove = true
+				} else {
+					// Przypadek 2: Plik jest aktywny w bazie
+					if _, statErr := os.Stat(existingAsset.FilePath); os.IsNotExist(statErr) {
+						// Starego pliku nie ma na dysku
+						isMove = true
+					}
+					// Jeśli istnieje -> To jest KOPIA.
+				}
+
+				if isMove {
+					s.logger.Info("Self-healing: Asset moved", "old_path", existingAsset.FilePath, "new_path", path)
+					err := s.db.UpdateAssetLocation(ctx, database.UpdateAssetLocationParams{
+						ID:           existingAsset.ID,
+						FilePath:     path,
+						ScanFolderID: sql.NullInt64{Int64: int64(folder.ID), Valid: true},
+						LastScanned:  time.Now(),
+					})
+
+					if err != nil {
+						s.logger.Error("Failed to update moved asset", "error", err)
+					} else {
+						foundAssets[existingAsset.ID] = true
+						s.updateAndEmitTotal(total, d, wailsCtx, totalToProcess)
+						return nil
+					}
+				} else {
+					s.logger.Info("Duplicate detected (Copy)", "path", path, "original_id", existingAsset.ID)
+				}
+			}
+		}
 
 		// TODO: Add thumbnail generation logic
-
+		hasValidDimensions := imgMeta.Width > 0 && imgMeta.Height > 0
 		_, dbErr := s.db.CreateAsset(ctx, database.CreateAssetParams{
-			ScanFolderID:  sql.NullInt64{Int64: int64(folder.ID), Valid: true},
-			FileName:      d.Name(),
-			FilePath:      path,
-			FileType:      s.determineFileType(ext),
-			FileSize:      info.Size(),
-			ThumbnailPath: "", // TODO: Generate thumbnail logic and path
-			LastModified:  info.ModTime(),
-			LastScanned:   time.Now(),
-			DominantColor: s.getDominantColor(path),
-			// TODO: Add more fields as needed
+			ScanFolderID:    sql.NullInt64{Int64: int64(folder.ID), Valid: true},
+			FileName:        d.Name(),
+			FilePath:        path,
+			FileType:        fileType,
+			FileSize:        info.Size(),
+			ThumbnailPath:   "", // TODO: Generate thumbnail logic and path
+			FileHash:        sql.NullString{String: fileHash, Valid: fileHash != ""},
+			ImageWidth:      sql.NullInt64{Int64: int64(imgMeta.Width), Valid: hasValidDimensions},
+			ImageHeight:     sql.NullInt64{Int64: int64(imgMeta.Height), Valid: hasValidDimensions},
+			DominantColor:   s.getDominantColor(path),
+			BitDepth:        sql.NullInt64{Int64: int64(imgMeta.BitDepth), Valid: hasValidDimensions},
+			HasAlphaChannel: sql.NullBool{Bool: imgMeta.HasAlphaChannel, Valid: hasValidDimensions},
+			LastModified:    info.ModTime(),
+			LastScanned:     time.Now(),
 		})
 		if dbErr != nil {
 			// TODO: Handle UNIQUE constraint violation
@@ -210,7 +286,7 @@ func (s *Scanner) getAllFilesCount(folder database.ScanFolder) int {
 func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsset, error) {
 	s.logger.Info("Loading assets paths to the memmory")
 
-	rows, err := s.db.ListAssetsPath(ctx)
+	rows, err := s.db.ListAssetsForCache(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -221,6 +297,7 @@ func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsse
 		existing[row.FilePath] = CachedAsset{
 			ID:           row.ID,
 			LastModified: row.LastModified,
+			IsDeleted:    row.IsDeleted,
 		}
 	}
 	s.logger.Info("Loaded assets cache", "count", len(existing))

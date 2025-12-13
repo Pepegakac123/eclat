@@ -103,6 +103,7 @@ type ScannerConfig struct {
 		Name string
 		Hex  string
 	} `json:"predefinedPalette"`
+	MaxAllowHashFileSize int64 `json:"maxAllowHashFileSize"`
 }
 
 // NewScannerConfig initializes a new configuration with default allowed extensions.
@@ -111,8 +112,9 @@ func NewScannerConfig() *ScannerConfig {
 	defaultAllowedExtensionsCopy := make(map[string]bool)
 	maps.Copy(defaultAllowedExtensionsCopy, defaultAllowedExtensions)
 	return &ScannerConfig{
-		AllowedExtensions: defaultAllowedExtensionsCopy,
-		PredefinedPalette: predefinedPalette,
+		AllowedExtensions:    defaultAllowedExtensionsCopy,
+		PredefinedPalette:    predefinedPalette,
+		MaxAllowHashFileSize: 1024 * 1024 * 10, // 10MB
 	}
 }
 

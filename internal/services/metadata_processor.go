@@ -1,15 +1,23 @@
 package services
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"image"
+	"image/color"
+	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
+
+	_ "golang.org/x/image/tiff"
 
 	"github.com/EdlinOrg/prominentcolor"
 	"github.com/lucasb-eyer/go-colorful"
@@ -23,6 +31,13 @@ const (
 	FileTypeTexture FileType = "texture"
 	FileTypeOther   FileType = "other"
 )
+
+type ImageMetadata struct {
+	Width           int
+	Height          int
+	HasAlphaChannel bool
+	BitDepth        int
+}
 
 // determineFileType przypisuje kategorię na podstawie rozszerzenia pliku.
 // Zakłada, że extension zawiera kropkę (np. ".jpg").
@@ -61,6 +76,74 @@ func (s *Scanner) determineFileType(extension string) string {
 	default:
 		return string(FileTypeOther)
 	}
+}
+
+func (s *Scanner) extractImageMetadata(filepath string) (ImageMetadata, error) {
+	f, err := os.Open(filepath)
+	if err != nil {
+		return ImageMetadata{}, err
+	}
+	defer f.Close()
+
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return ImageMetadata{}, err
+	}
+
+	meta := ImageMetadata{
+		Width:  cfg.Width,
+		Height: cfg.Height,
+	}
+
+	model := cfg.ColorModel
+	// Sprawdzenie kanału Alpha
+	// JPEG nie ma alfy, PNG/GIF/WebP mogą mieć.
+	// Sprawdzamy, czy model to jeden z typów wspierających przezroczystość.
+	switch model {
+	case color.RGBAModel, color.NRGBAModel, color.AlphaModel, color.Alpha16Model, color.NYCbCrAModel:
+		meta.HasAlphaChannel = true
+	default:
+		// Bardziej zaawansowane sprawdzenie dla palet (np. GIF/PNG8)
+		if _, ok := model.(color.Palette); ok {
+			// Palety mogą mieć przezroczystość, ale decodeConfig tego łatwo nie powie bez analizy palety.
+			// Dla uproszczenia w MVP: GIFy często mają alpha.
+			meta.HasAlphaChannel = true
+		} else {
+			meta.HasAlphaChannel = false
+		}
+	}
+
+	// Sprawdzenie głębi bitowej (Bit Depth)
+	switch model {
+	case color.RGBA64Model, color.NRGBA64Model, color.Alpha16Model, color.Gray16Model:
+		meta.BitDepth = 16
+	default:
+		meta.BitDepth = 8
+	}
+
+	return meta, nil
+}
+func (s *Scanner) calculateFileHash(filePath string) (string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	fileInfo, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if fileInfo.Size() > s.config.MaxAllowHashFileSize {
+		return "", errors.New("file size exceeds maximum allowed for it to be hashed")
+	}
+
+	hasher := sha256.New()
+
+	if _, err := io.Copy(hasher, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 // calculateDominantColor calculates the dominant color hex string using K-means clustering.

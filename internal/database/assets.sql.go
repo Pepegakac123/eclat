@@ -319,26 +319,32 @@ func (q *Queries) ListAssets(ctx context.Context, arg ListAssetsParams) ([]Asset
 	return items, nil
 }
 
-const listAssetsPath = `-- name: ListAssetsPath :many
-SELECT id,file_path,last_modified FROM assets
+const listAssetsForCache = `-- name: ListAssetsForCache :many
+SELECT id,file_path,last_modified,is_deleted FROM assets
 `
 
-type ListAssetsPathRow struct {
+type ListAssetsForCacheRow struct {
 	ID           int64     `json:"id"`
 	FilePath     string    `json:"file_path"`
 	LastModified time.Time `json:"last_modified"`
+	IsDeleted    bool      `json:"is_deleted"`
 }
 
-func (q *Queries) ListAssetsPath(ctx context.Context) ([]ListAssetsPathRow, error) {
-	rows, err := q.query(ctx, q.listAssetsPathStmt, listAssetsPath)
+func (q *Queries) ListAssetsForCache(ctx context.Context) ([]ListAssetsForCacheRow, error) {
+	rows, err := q.query(ctx, q.listAssetsForCacheStmt, listAssetsForCache)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListAssetsPathRow
+	var items []ListAssetsForCacheRow
 	for rows.Next() {
-		var i ListAssetsPathRow
-		if err := rows.Scan(&i.ID, &i.FilePath, &i.LastModified); err != nil {
+		var i ListAssetsForCacheRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.FilePath,
+			&i.LastModified,
+			&i.IsDeleted,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -569,6 +575,29 @@ UPDATE assets SET is_favorite = NOT is_favorite WHERE id = ?
 
 func (q *Queries) ToggleAssetFavorite(ctx context.Context, id int64) error {
 	_, err := q.exec(ctx, q.toggleAssetFavoriteStmt, toggleAssetFavorite, id)
+	return err
+}
+
+const updateAssetLocation = `-- name: UpdateAssetLocation :exec
+UPDATE assets
+SET file_path = ?, scan_folder_id = ?, is_deleted = false, last_scanned = ?
+WHERE id = ?
+`
+
+type UpdateAssetLocationParams struct {
+	FilePath     string        `json:"file_path"`
+	ScanFolderID sql.NullInt64 `json:"scan_folder_id"`
+	LastScanned  time.Time     `json:"last_scanned"`
+	ID           int64         `json:"id"`
+}
+
+func (q *Queries) UpdateAssetLocation(ctx context.Context, arg UpdateAssetLocationParams) error {
+	_, err := q.exec(ctx, q.updateAssetLocationStmt, updateAssetLocation,
+		arg.FilePath,
+		arg.ScanFolderID,
+		arg.LastScanned,
+		arg.ID,
+	)
 	return err
 }
 

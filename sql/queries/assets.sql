@@ -57,8 +57,8 @@ WHERE at.tag_id IS NULL AND a.is_deleted = 0
 GROUP BY a.id
 LIMIT ? OFFSET ?;
 
--- name: ListAssetsPath :many
-SELECT id,file_path,last_modified FROM assets;
+-- name: ListAssetsForCache :many
+SELECT id,file_path,last_modified,is_deleted FROM assets;
 
 -- name: SetAssetRating :exec
 UPDATE assets SET rating = ? WHERE id = ?;
@@ -69,6 +69,11 @@ UPDATE assets SET is_favorite = NOT is_favorite WHERE id = ?;
 -- name: UpdateAssetScanStatus :exec
 UPDATE assets
 SET last_scanned = ?, file_size = ?, last_modified = ?
+WHERE id = ?;
+
+-- name: UpdateAssetLocation :exec
+UPDATE assets
+SET file_path = ?, scan_folder_id = ?, is_deleted = false, last_scanned = ?
 WHERE id = ?;
 
 -- name: SoftDeleteAsset :exec

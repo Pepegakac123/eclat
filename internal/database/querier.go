@@ -33,8 +33,8 @@ type Querier interface {
 	GetTagByName(ctx context.Context, name string) (Tag, error)
 	GetTagsForAsset(ctx context.Context, assetID int64) ([]Tag, error)
 	ListAssets(ctx context.Context, arg ListAssetsParams) ([]Asset, error)
+	ListAssetsForCache(ctx context.Context) ([]ListAssetsForCacheRow, error)
 	ListAssetsInMaterialSet(ctx context.Context, arg ListAssetsInMaterialSetParams) ([]Asset, error)
-	ListAssetsPath(ctx context.Context) ([]ListAssetsPathRow, error)
 	ListDeletedAssets(ctx context.Context, arg ListDeletedAssetsParams) ([]Asset, error)
 	ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssetsParams) ([]Asset, error)
 	ListMaterialSets(ctx context.Context) ([]ListMaterialSetsRow, error)
@@ -51,6 +51,7 @@ type Querier interface {
 	SoftDeleteAsset(ctx context.Context, id int64) error
 	SoftDeleteScanFolder(ctx context.Context, id int64) error
 	ToggleAssetFavorite(ctx context.Context, id int64) error
+	UpdateAssetLocation(ctx context.Context, arg UpdateAssetLocationParams) error
 	UpdateAssetMetadata(ctx context.Context, arg UpdateAssetMetadataParams) (Asset, error)
 	UpdateAssetScanStatus(ctx context.Context, arg UpdateAssetScanStatusParams) error
 	UpdateMaterialSet(ctx context.Context, arg UpdateMaterialSetParams) error

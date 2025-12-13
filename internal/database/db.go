@@ -93,11 +93,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAssetsStmt, err = db.PrepareContext(ctx, listAssets); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAssets: %w", err)
 	}
+	if q.listAssetsForCacheStmt, err = db.PrepareContext(ctx, listAssetsForCache); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAssetsForCache: %w", err)
+	}
 	if q.listAssetsInMaterialSetStmt, err = db.PrepareContext(ctx, listAssetsInMaterialSet); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAssetsInMaterialSet: %w", err)
-	}
-	if q.listAssetsPathStmt, err = db.PrepareContext(ctx, listAssetsPath); err != nil {
-		return nil, fmt.Errorf("error preparing query ListAssetsPath: %w", err)
 	}
 	if q.listDeletedAssetsStmt, err = db.PrepareContext(ctx, listDeletedAssets); err != nil {
 		return nil, fmt.Errorf("error preparing query ListDeletedAssets: %w", err)
@@ -146,6 +146,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.toggleAssetFavoriteStmt, err = db.PrepareContext(ctx, toggleAssetFavorite); err != nil {
 		return nil, fmt.Errorf("error preparing query ToggleAssetFavorite: %w", err)
+	}
+	if q.updateAssetLocationStmt, err = db.PrepareContext(ctx, updateAssetLocation); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateAssetLocation: %w", err)
 	}
 	if q.updateAssetMetadataStmt, err = db.PrepareContext(ctx, updateAssetMetadata); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAssetMetadata: %w", err)
@@ -282,14 +285,14 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAssetsStmt: %w", cerr)
 		}
 	}
+	if q.listAssetsForCacheStmt != nil {
+		if cerr := q.listAssetsForCacheStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAssetsForCacheStmt: %w", cerr)
+		}
+	}
 	if q.listAssetsInMaterialSetStmt != nil {
 		if cerr := q.listAssetsInMaterialSetStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAssetsInMaterialSetStmt: %w", cerr)
-		}
-	}
-	if q.listAssetsPathStmt != nil {
-		if cerr := q.listAssetsPathStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listAssetsPathStmt: %w", cerr)
 		}
 	}
 	if q.listDeletedAssetsStmt != nil {
@@ -370,6 +373,11 @@ func (q *Queries) Close() error {
 	if q.toggleAssetFavoriteStmt != nil {
 		if cerr := q.toggleAssetFavoriteStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing toggleAssetFavoriteStmt: %w", cerr)
+		}
+	}
+	if q.updateAssetLocationStmt != nil {
+		if cerr := q.updateAssetLocationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateAssetLocationStmt: %w", cerr)
 		}
 	}
 	if q.updateAssetMetadataStmt != nil {
@@ -459,8 +467,8 @@ type Queries struct {
 	getTagByNameStmt                *sql.Stmt
 	getTagsForAssetStmt             *sql.Stmt
 	listAssetsStmt                  *sql.Stmt
+	listAssetsForCacheStmt          *sql.Stmt
 	listAssetsInMaterialSetStmt     *sql.Stmt
-	listAssetsPathStmt              *sql.Stmt
 	listDeletedAssetsStmt           *sql.Stmt
 	listFavoriteAssetsStmt          *sql.Stmt
 	listMaterialSetsStmt            *sql.Stmt
@@ -477,6 +485,7 @@ type Queries struct {
 	softDeleteAssetStmt             *sql.Stmt
 	softDeleteScanFolderStmt        *sql.Stmt
 	toggleAssetFavoriteStmt         *sql.Stmt
+	updateAssetLocationStmt         *sql.Stmt
 	updateAssetMetadataStmt         *sql.Stmt
 	updateAssetScanStatusStmt       *sql.Stmt
 	updateMaterialSetStmt           *sql.Stmt
@@ -511,8 +520,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTagByNameStmt:                q.getTagByNameStmt,
 		getTagsForAssetStmt:             q.getTagsForAssetStmt,
 		listAssetsStmt:                  q.listAssetsStmt,
+		listAssetsForCacheStmt:          q.listAssetsForCacheStmt,
 		listAssetsInMaterialSetStmt:     q.listAssetsInMaterialSetStmt,
-		listAssetsPathStmt:              q.listAssetsPathStmt,
 		listDeletedAssetsStmt:           q.listDeletedAssetsStmt,
 		listFavoriteAssetsStmt:          q.listFavoriteAssetsStmt,
 		listMaterialSetsStmt:            q.listMaterialSetsStmt,
@@ -529,6 +538,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		softDeleteAssetStmt:             q.softDeleteAssetStmt,
 		softDeleteScanFolderStmt:        q.softDeleteScanFolderStmt,
 		toggleAssetFavoriteStmt:         q.toggleAssetFavoriteStmt,
+		updateAssetLocationStmt:         q.updateAssetLocationStmt,
 		updateAssetMetadataStmt:         q.updateAssetMetadataStmt,
 		updateAssetScanStatusStmt:       q.updateAssetScanStatusStmt,
 		updateMaterialSetStmt:           q.updateMaterialSetStmt,
