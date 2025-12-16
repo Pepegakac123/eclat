@@ -18,10 +18,6 @@ import (
 /*
 TODO: GAP ANALYSIS - SCANNER IMPLEMENTATION
 
-2. PRZETWARZANIE MEDIÓW (C# używa ImageSharp):
-   - [ ] Thumbnails: Integracja biblioteki do skalowania obrazów (np. "github.com/disintegration/imaging").
-   - [ ] Video/3D: Obsługa placeholderów dla plików, których nie umiemy otworzyć (np. .blend, .fbx).
-
 3. WYDAJNOŚĆ I CONCURRENCY:
    - [ ] Worker Pool: Zastąpienie sekwencyjnego `WalkDir` wzorcem Producer-Consumer.
          (WalkDir wrzuca ścieżki na kanał -> N gorutyn przetwarza pliki równolegle).
@@ -39,14 +35,16 @@ type Scanner struct {
 	cancelFunc context.CancelFunc
 	config     *ScannerConfig
 	isScanning atomic.Bool
+	thumbGen   *ThumbnailGenerator
 }
 
 // NewScanner creates a new Scanner instance
-func NewScanner(db *database.Queries) *Scanner {
+func NewScanner(db *database.Queries, thumbGen *ThumbnailGenerator) *Scanner {
 	return &Scanner{
-		db:     db,
-		logger: slog.Default(),
-		config: NewScannerConfig(),
+		db:       db,
+		logger:   slog.Default(),
+		config:   NewScannerConfig(),
+		thumbGen: thumbGen,
 	}
 }
 
@@ -148,24 +146,7 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 			return nil
 		}
 		info, _ := d.Info()
-		var imgMeta ImageMetadata
-		var fileHash string
-		fileType := s.determineFileType(ext)
-		if fileType == string(FileTypeImage) || fileType == string(FileTypeTexture) {
-			meta, err := s.extractImageMetadata(path)
-			if err == nil {
-				imgMeta = meta
-			} else {
-				s.logger.Debug("Failed to extract image metadata", "path", path, "error", err)
-			}
-		}
-
-		hash, err := s.calculateFileHash(path)
-		if err == nil {
-			fileHash = hash
-		} else {
-			s.logger.Debug("Failed to calculate hash", "path", path, "error", err)
-		}
+		fileType := DetermineFileType(ext)
 		if cached, exists := existingCache[path]; exists {
 			foundAssets[cached.ID] = true
 			cachedTime := existingCache[path].LastModified
@@ -183,6 +164,13 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 			s.updateAndEmitTotal(total, d, wailsCtx, totalToProcess)
 			//Tak to skip
 			return nil
+		}
+		var fileHash string
+		hash, err := CalculateFileHash(path, s.config.MaxAllowHashFileSize)
+		if err == nil {
+			fileHash = hash
+		} else {
+			s.logger.Debug("Failed to calculate hash", "path", path, "error", err)
 		}
 		// --- SELF-HEALING & DUPLICATE DETECTION ---
 		if fileHash != "" {
@@ -224,22 +212,25 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 				}
 			}
 		}
-
+		thumbResult, err := s.thumbGen.Generate(ctx, path)
+		if err != nil {
+			s.logger.Error("Critical thumbnail generation failure", "path", path, "error", err)
+		}
 		// TODO: Add thumbnail generation logic
-		hasValidDimensions := imgMeta.Width > 0 && imgMeta.Height > 0
+		hasValidDimensions := thumbResult.Metadata.Width > 0 && thumbResult.Metadata.Height > 0
 		_, dbErr := s.db.CreateAsset(ctx, database.CreateAssetParams{
 			ScanFolderID:    sql.NullInt64{Int64: int64(folder.ID), Valid: true},
 			FileName:        d.Name(),
 			FilePath:        path,
 			FileType:        fileType,
 			FileSize:        info.Size(),
-			ThumbnailPath:   "", // TODO: Generate thumbnail logic and path
+			ThumbnailPath:   thumbResult.WebPath,
 			FileHash:        sql.NullString{String: fileHash, Valid: fileHash != ""},
-			ImageWidth:      sql.NullInt64{Int64: int64(imgMeta.Width), Valid: hasValidDimensions},
-			ImageHeight:     sql.NullInt64{Int64: int64(imgMeta.Height), Valid: hasValidDimensions},
-			DominantColor:   s.getDominantColor(path),
-			BitDepth:        sql.NullInt64{Int64: int64(imgMeta.BitDepth), Valid: hasValidDimensions},
-			HasAlphaChannel: sql.NullBool{Bool: imgMeta.HasAlphaChannel, Valid: hasValidDimensions},
+			ImageWidth:      sql.NullInt64{Int64: int64(thumbResult.Metadata.Width), Valid: hasValidDimensions},
+			ImageHeight:     sql.NullInt64{Int64: int64(thumbResult.Metadata.Height), Valid: hasValidDimensions},
+			DominantColor:   sql.NullString{String: string(thumbResult.Metadata.DominantColor), Valid: thumbResult.Metadata.DominantColor != ""},
+			BitDepth:        sql.NullInt64{Int64: int64(thumbResult.Metadata.BitDepth), Valid: hasValidDimensions},
+			HasAlphaChannel: sql.NullBool{Bool: thumbResult.Metadata.HasAlphaChannel, Valid: hasValidDimensions},
 			LastModified:    info.ModTime(),
 			LastScanned:     time.Now(),
 		})
