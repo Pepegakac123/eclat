@@ -18,11 +18,6 @@ import (
 /*
 TODO: GAP ANALYSIS - SCANNER IMPLEMENTATION
 
-1. LOGIKA BIZNESOWA (SYNCHRONIZACJA):
-   - [ ] Self-Healing: Jeśli pliku nie ma pod ścieżką, ale zgadza się Hash (dla przeniesionych plików) -> Zaktualizuj ścieżkę i ScanFolderID zamiast tworzyć duplikat.
-   - [ ] Soft Delete: Wykrywanie plików usuniętych z dysku lub takich, których rozszerzenie przestało być dozwolone (ustaw flagę IsDeleted).
-   - [ ] Restore: Przywracanie plików (usuwanie flagi IsDeleted), jeśli plik wrócił lub rozszerzenie znów jest dozwolone.
-
 2. PRZETWARZANIE MEDIÓW (C# używa ImageSharp):
    - [ ] Thumbnails: Integracja biblioteki do skalowania obrazów (np. "github.com/disintegration/imaging").
    - [ ] Video/3D: Obsługa placeholderów dla plików, których nie umiemy otworzyć (np. .blend, .fbx).
