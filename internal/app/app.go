@@ -25,5 +25,6 @@ func NewApp(scanner *services.Scanner, settingsService *services.SettingsService
 func (a *App) OnStartup(ctx context.Context) {
 	a.ctx = ctx
 	a.Scanner.Startup(ctx)
+	a.SettingsService.Startup(ctx)
 	a.logger.Info("App started")
 }

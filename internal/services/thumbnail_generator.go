@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"log/slog"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
+	"github.com/chai2010/webp"
 	"github.com/disintegration/imaging"
 	"github.com/google/uuid"
 )
@@ -87,18 +90,28 @@ func (g *ThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailResult,
 		return g.getPlaceholderResult(filepath.Ext(srcPath)), nil
 	}
 	metadata := g.extractMetadataFromImage(img)
+	thumb := imaging.Resize(img, 400, 0, imaging.Lanczos)
+	// 2. Konwersja na RGBA (Wymagana przez enkoder WebP)
+	bounds := thumb.Bounds()
+	imgRGBA := image.NewRGBA(bounds)
+	draw.Draw(imgRGBA, bounds, thumb, bounds.Min, draw.Src)
 
 	// 3. Generowanie miniatury
 	id := uuid.New()
 	filename := fmt.Sprintf("%s.webp", id.String())
 	fullDestPath := filepath.Join(g.cacheDir, filename)
+	outFile, err := os.Create(fullDestPath)
+	if err != nil {
+		return ThumbnailResult{}, fmt.Errorf("nie udało się utworzyć pliku wyjściowego: %w", err)
+	}
+	defer outFile.Close()
 
-	// Resize (szybki Lanczos)
-	thumb := imaging.Resize(img, 400, 0, imaging.Lanczos)
-
-	// Zapis
-	if err := imaging.Save(thumb, fullDestPath); err != nil {
-		return ThumbnailResult{}, fmt.Errorf("failed to save thumbnail: %w", err)
+	err = webp.Encode(outFile, imgRGBA, &webp.Options{
+		Lossless: false,
+		Quality:  90,
+	})
+	if err != nil {
+		return ThumbnailResult{}, fmt.Errorf("nie udało się utworzyć pliku wyjściowego: %w", err)
 	}
 
 	return ThumbnailResult{

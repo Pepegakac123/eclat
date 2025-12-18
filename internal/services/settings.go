@@ -12,9 +12,20 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// ScanFolderDTO - Struktura bezpieczna dla Wails/Frontend
+type ScanFolderDTO struct {
+	ID          int64   `json:"id"`
+	Path        string  `json:"path"`
+	IsActive    bool    `json:"isActive"`
+	LastScanned *string `json:"lastScanned"` // Zmieniono z *time.Time na *string
+	DateAdded   string  `json:"dateAdded"`   // Zmieniono z time.Time na string
+	IsDeleted   bool    `json:"isDeleted"`
+}
 
 // SettingsService odpowiada za konfigurację aplikacji i zarządzanie biblioteką.
 type SettingsService struct {
@@ -37,21 +48,31 @@ func (s *SettingsService) Startup(ctx context.Context) {
 	s.logger.Info("SettingsService started")
 }
 
-// GetFolders zwraca listę wszystkich monitorowanych folderów.
-func (s *SettingsService) GetFolders() ([]database.ScanFolder, error) {
-	return s.db.ListScanFolders(s.ctx)
+func (s *SettingsService) GetFolders() ([]ScanFolderDTO, error) {
+	folders, err := s.db.ListScanFolders(s.ctx)
+	if err != nil {
+		return nil, err
+	}
+	dtos := make([]ScanFolderDTO, len(folders))
+	for i, f := range folders {
+		dtos[i] = s.mapToDTO(f)
+	}
+
+	return dtos, nil
 }
 
 // UpdateFolderStatus
-func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (database.ScanFolder, error) {
+// --- ZMIANA: Zwracamy ScanFolderDTO ---
+func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (ScanFolderDTO, error) {
 	err := s.db.UpdateScanFolderStatus(s.ctx, database.UpdateScanFolderStatusParams{
 		IsActive: isActive,
 		ID:       id,
 	})
 	if err != nil {
-		return database.ScanFolder{}, err
+		return ScanFolderDTO{}, err
 	}
-	// Jeśli wyłączamy folder, a ma on rodzica, dajmy znać że assety są "ukryte"
+
+	// Logika "ukrywania" assetów
 	if !isActive {
 		folder, _ := s.db.GetScanFolderById(s.ctx, id)
 		if parent := s.findBestParent(folder); parent != nil {
@@ -63,7 +84,11 @@ func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (database.
 		}
 	}
 
-	return s.db.GetScanFolderById(s.ctx, id)
+	updatedFolder, err := s.db.GetScanFolderById(s.ctx, id)
+	if err != nil {
+		return ScanFolderDTO{}, err
+	}
+	return s.mapToDTO(updatedFolder), nil
 }
 
 // DeleteFolder - KOSZ
@@ -74,7 +99,6 @@ func (s *SettingsService) DeleteFolder(id int64) error {
 	}
 	bestParent := s.findBestParent(targetFolder)
 
-	// Logika Reparentingu (
 	if bestParent != nil {
 		s.logger.Info("Deleting folder. Moving assets to parent.",
 			"deleted", targetFolder.Path,
@@ -98,14 +122,15 @@ func (s *SettingsService) DeleteFolder(id int64) error {
 }
 
 // AddFolder - Z obsługą przywracania (Restore)
-func (s *SettingsService) AddFolder(path string) (database.ScanFolder, error) {
+// --- ZMIANA: Zwracamy ScanFolderDTO ---
+func (s *SettingsService) AddFolder(path string) (ScanFolderDTO, error) {
 	if !s.ValidatePath(path) {
-		return database.ScanFolder{}, errors.New("folder does not exist")
+		return ScanFolderDTO{}, errors.New("folder does not exist")
 	}
 
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return database.ScanFolder{}, err
+		return ScanFolderDTO{}, err
 	}
 
 	existing, err := s.db.GetScanFolderByPath(s.ctx, absPath)
@@ -115,7 +140,7 @@ func (s *SettingsService) AddFolder(path string) (database.ScanFolder, error) {
 			s.logger.Info("Restoring folder from trash", "path", absPath)
 			err := s.db.RestoreScanFolder(s.ctx, existing.ID)
 			if err != nil {
-				return database.ScanFolder{}, err
+				return ScanFolderDTO{}, err
 			}
 			if !existing.IsActive {
 				s.db.UpdateScanFolderStatus(s.ctx, database.UpdateScanFolderStatusParams{
@@ -123,11 +148,35 @@ func (s *SettingsService) AddFolder(path string) (database.ScanFolder, error) {
 					ID:       existing.ID,
 				})
 			}
-			return s.db.GetScanFolderById(s.ctx, existing.ID)
+			restored, _ := s.db.GetScanFolderById(s.ctx, existing.ID)
+			return s.mapToDTO(restored), nil
 		}
-		return database.ScanFolder{}, errors.New("folder is already in library")
+		return ScanFolderDTO{}, errors.New("folder is already in library")
 	}
-	return s.db.CreateScanFolder(s.ctx, absPath)
+
+	newFolder, err := s.db.CreateScanFolder(s.ctx, absPath)
+	if err != nil {
+		return ScanFolderDTO{}, err
+	}
+	return s.mapToDTO(newFolder), nil
+}
+
+// Helper: mapToDTO konwertuje struct bazy na struct dla Frontendu
+func (s *SettingsService) mapToDTO(f database.ScanFolder) ScanFolderDTO {
+	var lastScannedStr *string
+	if f.LastScanned.Valid {
+		formatted := f.LastScanned.Time.Format(time.RFC3339)
+		lastScannedStr = &formatted
+	}
+
+	return ScanFolderDTO{
+		ID:          f.ID,
+		Path:        f.Path,
+		IsActive:    f.IsActive,
+		LastScanned: lastScannedStr,                   // Teraz to *string
+		DateAdded:   f.DateAdded.Format(time.RFC3339), // Teraz to string
+		IsDeleted:   f.IsDeleted,
+	}
 }
 
 // Helper
@@ -147,7 +196,7 @@ func (s *SettingsService) findBestParent(target database.ScanFolder) *database.S
 		}
 		if !f.IsActive {
 			continue
-		} // Ignorujemy wyłączone
+		}
 
 		parentPath := filepath.Clean(f.Path)
 		rel, err := filepath.Rel(parentPath, targetPath)
@@ -161,7 +210,6 @@ func (s *SettingsService) findBestParent(target database.ScanFolder) *database.S
 	return bestParent
 }
 
-// ValidatePath sprawdza tylko czy ścieżka istnieje i jest katalogiem .
 func (s *SettingsService) ValidatePath(path string) bool {
 	file, err := os.Stat(path)
 	if err != nil {
@@ -170,7 +218,6 @@ func (s *SettingsService) ValidatePath(path string) bool {
 	return file.IsDir()
 }
 
-// OpenInExplorer otwiera menedżer plików i próbuje zaznaczyć wskazany plik/folder.
 func (s *SettingsService) OpenInExplorer(path string) error {
 	cleanPath := filepath.Clean(path)
 
