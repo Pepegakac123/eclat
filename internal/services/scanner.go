@@ -36,6 +36,11 @@ type Scanner struct {
 	config     *ScannerConfig
 	isScanning atomic.Bool
 	thumbGen   *ThumbnailGenerator
+	ctx        context.Context
+}
+
+func (s *Scanner) Startup(ctx context.Context) {
+	s.ctx = ctx
 }
 
 // NewScanner creates a new Scanner instance
@@ -55,10 +60,11 @@ type CachedAsset struct {
 }
 
 // StartScan starts the scanning process in the background
-func (s *Scanner) StartScan(wailsCtx context.Context) error {
+func (s *Scanner) StartScan() error {
 	if s.isScanning.Load() {
 		return nil
 	}
+	// kontekst do anulowania samej pracy (background work)
 	scanCtx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
 	s.isScanning.Store(true)
@@ -94,17 +100,17 @@ func (s *Scanner) StartScan(wailsCtx context.Context) error {
 		foundAssets := make(map[int64]bool)
 
 		totalProcessed := 0
-		runtime.EventsEmit(wailsCtx, "scan_status", "scanning") // Needed for UI Scanner Status Update
+		runtime.EventsEmit(s.ctx, "scan_status", "scanning") // Needed for UI Scanner Status Update
 		for _, f := range folders {
 			// Check for the cancellation
 			if scanCtx.Err() != nil {
 				s.logger.Info("Scanner cancelled by user")
 				break
 			}
-			s.scanDirectory(scanCtx, wailsCtx, f, &totalProcessed, totalToProcess, existingAssets, foundAssets)
+			s.scanDirectory(scanCtx, f, &totalProcessed, totalToProcess, existingAssets, foundAssets)
 		}
 		s.logger.Info("Scanner finished", "total", totalProcessed)
-		runtime.EventsEmit(wailsCtx, "scan_status", "idle")
+		runtime.EventsEmit(s.ctx, "scan_status", "idle")
 		s.logger.Info("Starting Cleanup Phase (Soft Delete)...")
 		for path, cached := range existingAssets {
 			if !foundAssets[cached.ID] {
@@ -127,7 +133,7 @@ func (s *Scanner) StopScan() {
 }
 
 // Helper function that scans a directory for files, Add them to db and updates the total count
-func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, folder database.ScanFolder, total *int, totalToProcess int, existingCache map[string]CachedAsset, foundAssets map[int64]bool) {
+func (s *Scanner) scanDirectory(ctx context.Context, folder database.ScanFolder, total *int, totalToProcess int, existingCache map[string]CachedAsset, foundAssets map[int64]bool) {
 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return filepath.SkipAll
@@ -161,7 +167,7 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 				// s.logger.Info("File modified, updating...", "path", path)
 			}
 			// Update procesu skanowania
-			s.updateAndEmitTotal(total, d, wailsCtx, totalToProcess)
+			s.updateAndEmitTotal(total, d, totalToProcess)
 			//Tak to skip
 			return nil
 		}
@@ -204,7 +210,7 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 						s.logger.Error("Failed to update moved asset", "error", err)
 					} else {
 						foundAssets[existingAsset.ID] = true
-						s.updateAndEmitTotal(total, d, wailsCtx, totalToProcess)
+						s.updateAndEmitTotal(total, d, totalToProcess)
 						return nil
 					}
 				} else {
@@ -238,7 +244,7 @@ func (s *Scanner) scanDirectory(ctx context.Context, wailsCtx context.Context, f
 			// TODO: Handle UNIQUE constraint violation
 			s.logger.Debug("Skipping asset", "path", path, "reason", dbErr)
 		} else {
-			s.updateAndEmitTotal(total, d, wailsCtx, totalToProcess)
+			s.updateAndEmitTotal(total, d, totalToProcess)
 		}
 
 		return nil
@@ -291,10 +297,10 @@ func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsse
 
 }
 
-func (s *Scanner) updateAndEmitTotal(total *int, d fs.DirEntry, wailsCtx context.Context, totalToProcess int) {
+func (s *Scanner) updateAndEmitTotal(total *int, d fs.DirEntry, totalToProcess int) {
 	*total++
 	if *total%10 == 0 {
-		runtime.EventsEmit(wailsCtx, "scan_progress", map[string]any{
+		runtime.EventsEmit(s.ctx, "scan_progress", map[string]any{
 			"current":  *total,
 			"total":    totalToProcess,
 			"lastFile": d.Name(),
