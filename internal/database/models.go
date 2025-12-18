@@ -11,63 +11,64 @@ import (
 
 type Asset struct {
 	ID              int64          `json:"id"`
-	ScanFolderID    sql.NullInt64  `json:"scan_folder_id"`
-	ParentAssetID   sql.NullInt64  `json:"parent_asset_id"`
-	FileName        string         `json:"file_name"`
-	FilePath        string         `json:"file_path"`
-	FileType        string         `json:"file_type"`
-	FileSize        int64          `json:"file_size"`
-	ThumbnailPath   string         `json:"thumbnail_path"`
+	ScanFolderID    sql.NullInt64  `json:"scanFolderId"`
+	ParentAssetID   sql.NullInt64  `json:"parentAssetId"`
+	FileName        string         `json:"fileName"`
+	FilePath        string         `json:"filePath"`
+	FileType        string         `json:"fileType"`
+	FileSize        int64          `json:"fileSize"`
+	ThumbnailPath   string         `json:"thumbnailPath"`
 	Rating          int64          `json:"rating"`
 	Description     sql.NullString `json:"description"`
-	IsFavorite      sql.NullBool   `json:"is_favorite"`
-	ImageWidth      sql.NullInt64  `json:"image_width"`
-	ImageHeight     sql.NullInt64  `json:"image_height"`
-	DominantColor   sql.NullString `json:"dominant_color"`
-	BitDepth        sql.NullInt64  `json:"bit_depth"`
-	HasAlphaChannel sql.NullBool   `json:"has_alpha_channel"`
-	DateAdded       time.Time      `json:"date_added"`
-	LastScanned     time.Time      `json:"last_scanned"`
-	LastModified    time.Time      `json:"last_modified"`
-	FileHash        sql.NullString `json:"file_hash"`
-	IsDeleted       bool           `json:"is_deleted"`
-	DeletedAt       sql.NullTime   `json:"deleted_at"`
+	IsFavorite      sql.NullBool   `json:"isFavorite"`
+	ImageWidth      sql.NullInt64  `json:"imageWidth"`
+	ImageHeight     sql.NullInt64  `json:"imageHeight"`
+	DominantColor   sql.NullString `json:"dominantColor"`
+	BitDepth        sql.NullInt64  `json:"bitDepth"`
+	HasAlphaChannel sql.NullBool   `json:"hasAlphaChannel"`
+	DateAdded       time.Time      `json:"dateAdded"`
+	LastScanned     time.Time      `json:"lastScanned"`
+	LastModified    time.Time      `json:"lastModified"`
+	FileHash        sql.NullString `json:"fileHash"`
+	IsDeleted       bool           `json:"isDeleted"`
+	DeletedAt       sql.NullTime   `json:"deletedAt"`
 }
 
 type AssetMaterialSet struct {
-	AssetID       int64 `json:"asset_id"`
-	MaterialSetID int64 `json:"material_set_id"`
+	AssetID       int64 `json:"assetId"`
+	MaterialSetID int64 `json:"materialSetId"`
 }
 
 type AssetTag struct {
-	AssetID int64 `json:"asset_id"`
-	TagID   int64 `json:"tag_id"`
+	AssetID int64 `json:"assetId"`
+	TagID   int64 `json:"tagId"`
 }
 
 type MaterialSet struct {
 	ID             int64          `json:"id"`
 	Name           string         `json:"name"`
 	Description    sql.NullString `json:"description"`
-	CoverAssetID   sql.NullInt64  `json:"cover_asset_id"`
-	CustomCoverUrl sql.NullString `json:"custom_cover_url"`
-	CustomColor    sql.NullString `json:"custom_color"`
-	DateAdded      time.Time      `json:"date_added"`
-	LastModified   time.Time      `json:"last_modified"`
+	CoverAssetID   sql.NullInt64  `json:"coverAssetId"`
+	CustomCoverUrl sql.NullString `json:"customCoverUrl"`
+	CustomColor    sql.NullString `json:"customColor"`
+	DateAdded      time.Time      `json:"dateAdded"`
+	LastModified   time.Time      `json:"lastModified"`
 }
 
 type SavedSearch struct {
 	ID         int64     `json:"id"`
 	Name       string    `json:"name"`
-	FilterJson string    `json:"filter_json"`
-	DateAdded  time.Time `json:"date_added"`
+	FilterJson string    `json:"filterJson"`
+	DateAdded  time.Time `json:"dateAdded"`
 }
 
 type ScanFolder struct {
 	ID          int64        `json:"id"`
 	Path        string       `json:"path"`
-	IsActive    bool         `json:"is_active"`
-	LastScanned sql.NullTime `json:"last_scanned"`
-	DateAdded   time.Time    `json:"date_added"`
+	IsActive    bool         `json:"isActive"`
+	LastScanned sql.NullTime `json:"lastScanned"`
+	DateAdded   time.Time    `json:"dateAdded"`
+	IsDeleted   bool         `json:"isDeleted"`
 }
 
 type SystemSetting struct {
@@ -78,5 +79,5 @@ type SystemSetting struct {
 type Tag struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`
-	DateCreated time.Time `json:"date_created"`
+	DateCreated time.Time `json:"dateCreated"`
 }

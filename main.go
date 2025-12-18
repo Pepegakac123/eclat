@@ -56,9 +56,10 @@ func main() {
 
 	thumbGen := services.NewThumbnailGenerator(appCachePath, slog.Default())
 	scannerService := services.NewScanner(queries, thumbGen)
+	settingsService := services.NewSettingsService(queries)
 
 	// 4. APP SETUP
-	myApp := app.NewApp(scannerService)
+	myApp := app.NewApp(scannerService, settingsService)
 
 	// 5. WAILS RUN
 	err = wails.Run(&options.App{
@@ -75,6 +76,7 @@ func main() {
 		Bind: []interface{}{
 			myApp,          // Metody App (jeśli jakieś publiczne będą)
 			scannerService, // Metody Scannera (StartScan, GetFolders itp.)
+			settingsService,
 		},
 	})
 

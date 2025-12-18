@@ -1,19 +1,33 @@
-import { scannerService } from "@/services/scannerService";
-import { ScanFolder } from "@/types/api";
+import {
+  GetFolders,
+  AddFolder,
+  DeleteFolder,
+  ValidatePath,
+  UpdateFolderStatus,
+  OpenInExplorer,
+} from "@wailsjs/go/services/SettingsService";
+import {
+  GetConfig,
+  AddExtensions,
+  RemoveExtension,
+  GetPredefinedPalette,
+  StartScan,
+} from "@wailsjs/go/services/Scanner";
 import { addToast } from "@heroui/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, XCircle, FolderPlus, Trash2 } from "lucide-react";
 
 export const useScanFolders = () => {
   const queryClient = useQueryClient();
 
+  // --- QUERY: Foldery ---
   const foldersQuery = useQuery({
     queryKey: ["scan-folders"],
-    queryFn: scannerService.getFolders,
+    queryFn: GetFolders,
   });
 
+  // --- MUTATION: Dodaj Folder ---
   const addFolderMutation = useMutation({
-    mutationFn: scannerService.addFolder,
+    mutationFn: AddFolder,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scan-folders"] });
       addToast({
@@ -26,10 +40,9 @@ export const useScanFolders = () => {
       });
     },
     onError: (error: any) => {
-      const msg = error.response?.data?.message || "Unknown error";
       addToast({
         title: "Action Failed",
-        description: msg,
+        description: error || "Could not add folder",
         color: "danger",
         severity: "danger",
         variant: "flat",
@@ -37,158 +50,108 @@ export const useScanFolders = () => {
     },
   });
 
+  // --- MUTATION: Usuń Folder ---
   const deleteFolderMutation = useMutation({
-    mutationFn: scannerService.deleteFolder,
+    mutationFn: DeleteFolder,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scan-folders"] });
-      addToast({
-        title: "Folder Removed",
-        description: "It will no longer be scanned. Rescan will be required.",
-        color: "warning",
-        severity: "warning",
-        variant: "flat",
-      });
-    },
-    onError: (error: any) => {
-      addToast({
-        title: "Could not delete folder",
-        description:
-          error.response?.data?.message || "Could not remove the folder.",
-        color: "danger",
-        severity: "danger",
-        variant: "flat",
-      });
-    },
-  });
-  const updateStatusMutation = useMutation({
-    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
-      scannerService.updateFolderStatus(id, isActive),
-
-    // Dzieje się ZANIM request pójdzie do API
-    onMutate: async ({ id, isActive }) => {
-      // A. Anulujemy wszelkie odświeżanie w tle, żeby nie nadpisało nam UI
-      await queryClient.cancelQueries({ queryKey: ["scan-folders"] });
-
-      // B. Robimy "snapshot" obecnego stanu (na wypadek błędu trzeba cofnąć)
-      const previousFolders = queryClient.getQueryData<ScanFolder[]>([
-        "scan-folders",
-      ]);
-
-      // C. Ręcznie modyfikujemy cache. UI odświeży się NATYCHMIAST.
-      queryClient.setQueryData<ScanFolder[]>(["scan-folders"], (old) => {
-        if (!old) return [];
-        return old.map((folder) =>
-          folder.id === id ? { ...folder, isActive: isActive } : folder,
-        );
-      });
-
-      // Zwracamy kontekst do użycia w razie błędu
-      return { previousFolders };
-    },
-    onError: (err, newVars, context) => {
-      // Przywracamy stan sprzed kliknięcia (Rollback)
-      if (context?.previousFolders) {
-        queryClient.setQueryData(["scan-folders"], context.previousFolders);
-      }
-      addToast({
-        title: "Action Failed",
-        description: "Could not update folder status. Changes reverted.",
-        color: "danger",
-        severity: "danger",
-        variant: "flat",
-      });
-    },
-
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["scan-folders"] });
-    },
-
-    onSuccess: (_, { isActive }) => {
-      const action = isActive ? "Activated" : "Deactivated";
-      addToast({
-        title: `Folder ${action}`,
-        description: `Scanning is now ${isActive ? "enabled" : "disabled"} for this path.`,
-        color: isActive ? "success" : "warning",
-        severity: isActive ? "success" : "warning",
-        timeout: 2000,
-      });
-    },
-  });
-  const validateMutation = useMutation({
-    mutationFn: scannerService.validatePath,
-  });
-  const startScanMutation = useMutation({
-    mutationFn: scannerService.startScan,
-    onSuccess: () => {
-      addToast({
-        title: "Scanner Started",
-        description: "The background process has begun.",
-        color: "success",
-        severity: "success",
-        variant: "flat",
-      });
-      queryClient.invalidateQueries({ queryKey: ["scanner-status"] });
-    },
-    onError: (error: any) => {
-      addToast({
-        title: "Scan Failed to Start",
-        description:
-          error.response?.data?.message || "Is the scanner already running?",
-        color: "danger",
-        severity: "danger",
-        variant: "flat",
-      });
-    },
-  });
-  const extensionsQuery = useQuery({
-    queryKey: ["allowed-extensions"],
-    queryFn: scannerService.getAllowedExtensions,
-  });
-
-  const updateExtensionsMutation = useMutation({
-    mutationFn: scannerService.updateAllowedExtensions,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["allowed-extensions"] });
-      addToast({
-        title: "Settings Saved",
-        description: "File type filters updated.",
-        color: "success",
-      });
     },
     onError: (error: any) => {
       addToast({
         title: "Error",
-        description:
-          error.response?.data?.message || "Failed to update extensions.",
+        description: error || "Delete failed",
         color: "danger",
+        severity: "danger",
+        variant: "flat",
       });
     },
   });
 
-  const openExplorerMutation = useMutation({
-    mutationFn: scannerService.openInExplorer,
+  // --- MUTATION: Status (Switch) ---
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
+      UpdateFolderStatus(id, isActive),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scan-folders"] });
+    },
     onError: (error: any) => {
+      addToast({ title: "Error", description: error, color: "danger" });
+    },
+  });
+
+  // --- MUTATION: Start Skanowania ---
+  const startScanMutation = useMutation({
+    mutationFn: StartScan,
+    onError: (error: any) => {
+      addToast({ title: "Scan Error", description: error, color: "danger" });
+    },
+  });
+
+  // --- QUERY & MUTATION: Extensions ---
+  const extensionsQuery = useQuery({
+    queryKey: ["allowed-extensions"],
+    queryFn: async () => {
+      const config = await GetConfig();
+      return config.allowedExtensions || [];
+    },
+  });
+
+  const addExtensionMutation = useMutation({
+    mutationFn: (ext: string) => AddExtensions([ext]),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["allowed-extensions"] });
       addToast({
-        title: "System Error",
-        description:
-          error.response?.data?.message || "Could not open explorer.",
-        color: "danger",
+        title: "Saved",
+        description: "Extension added",
+        color: "success",
+      });
+    },
+    onError: (err: any) => {
+      addToast({ title: "Error", description: err, color: "danger" });
+    },
+  });
+
+  const removeExtensionMutation = useMutation({
+    mutationFn: RemoveExtension,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["allowed-extensions"] });
+      addToast({
+        title: "Removed",
+        description: "Extension removed",
+        color: "warning",
       });
     },
   });
+
+  // --- Wrapper dla Validate Path (UI oczekuje Promise<{isValid}>) ---
+  const validatePathWrapper = async (path: string) => {
+    const isValid = await ValidatePath(path);
+    return { isValid };
+  };
+
+  const paletteQuery = useQuery({
+    queryKey: ["predefined-palette"],
+    queryFn: GetPredefinedPalette, // Zwraca Promise<PaletteColor[]>
+    staleTime: Infinity, // To się nigdy nie zmienia
+  });
+
   return {
-    folders: foldersQuery.data,
+    folders: foldersQuery.data || [],
     isLoading: foldersQuery.isLoading,
     addFolder: addFolderMutation.mutateAsync,
     deleteFolder: deleteFolderMutation.mutateAsync,
-    validatePath: validateMutation.mutateAsync,
-    isValidating: validateMutation.isPending,
     updateFolderStatus: updateStatusMutation.mutateAsync,
+    validatePath: validatePathWrapper,
+    isValidating: false, // Wails działa lokalnie błyskawicznie
+
     startScan: startScanMutation.mutateAsync,
     isStartingScan: startScanMutation.isPending,
+    palette: paletteQuery.data || [],
     extensions: extensionsQuery.data || [],
     isLoadingExtensions: extensionsQuery.isLoading,
-    updateExtensions: updateExtensionsMutation.mutateAsync,
-    openInExplorer: openExplorerMutation.mutateAsync,
+    addExtension: addExtensionMutation.mutateAsync,
+    removeExtension: removeExtensionMutation.mutateAsync,
+
+    openInExplorer: OpenInExplorer,
   };
 };

@@ -12,7 +12,6 @@ import (
 type Querier interface {
 	AddAssetToMaterialSet(ctx context.Context, arg AddAssetToMaterialSetParams) error
 	AddTagToAsset(ctx context.Context, arg AddTagToAssetParams) error
-	// Przypisz do nowego folderu wszystkie assety, które fizycznie w nim leżą, ale są przypisane do innego folderu (np. rodzica)
 	ClaimAssetsForPath(ctx context.Context, arg ClaimAssetsForPathParams) error
 	ClearTagsFromAsset(ctx context.Context, assetID int64) error
 	CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset, error)
@@ -24,6 +23,7 @@ type Querier interface {
 	DeleteAssetPermanent(ctx context.Context, id int64) error
 	DeleteMaterialSet(ctx context.Context, id int64) error
 	DeleteSavedSearch(ctx context.Context, id int64) error
+	GetAllColors(ctx context.Context) ([]sql.NullString, error)
 	GetAssetByHash(ctx context.Context, fileHash sql.NullString) (Asset, error)
 	GetAssetById(ctx context.Context, id int64) (Asset, error)
 	GetAssetByPath(ctx context.Context, filePath string) (Asset, error)

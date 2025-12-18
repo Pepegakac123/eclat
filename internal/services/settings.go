@@ -4,12 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"eclat/internal/database"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // SettingsService odpowiada za konfigurację aplikacji i zarządzanie biblioteką.
@@ -33,104 +37,172 @@ func (s *SettingsService) Startup(ctx context.Context) {
 	s.logger.Info("SettingsService started")
 }
 
-// --- SEKJA 1: Zarządzanie Folderami (Scan Folders) ---
-
 // GetFolders zwraca listę wszystkich monitorowanych folderów.
 func (s *SettingsService) GetFolders() ([]database.ScanFolder, error) {
-	// TODO: Użyj s.db.ListScanFolders(s.ctx)
-	// Pamiętaj o obsłudze błędów.
-	return nil, nil
+	return s.db.ListScanFolders(s.ctx)
 }
 
-// AddFolder dodaje nowy folder do bazy.
-// Wymagania (z SettingsRepository.cs):
-// 1. Sprawdź czy folder istnieje fizycznie na dysku (os.Stat).
-// 2. Sprawdź czy folder już jest w bazie (GetScanFolderByPath).
-// 3. Jeśli jest w bazie i ma flagę is_deleted=1 -> przywróć go (RestoreScanFolder).
-// 4. Jeśli nie ma -> utwórz nowy (CreateScanFolder).
-func (s *SettingsService) AddFolder(path string) (database.ScanFolder, error) {
-	// TODO: Twoja implementacja tutaj.
-	// Wskazówka: filepath.Abs(path) jest Twoim przyjacielem.
-	return database.ScanFolder{}, nil
-}
-
-func (s *SettingsService) DeleteFolder(id int64) error {
-	ctx := context.Background()
-
-	targetFolder, err := s.db.GetScanFolderById(ctx, id)
+// UpdateFolderStatus
+func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (database.ScanFolder, error) {
+	err := s.db.UpdateScanFolderStatus(s.ctx, database.UpdateScanFolderStatusParams{
+		IsActive: isActive,
+		ID:       id,
+	})
 	if err != nil {
-		return err
+		return database.ScanFolder{}, err
 	}
-
-	allFolders, err := s.db.ListScanFolders(ctx)
-	if err != nil {
-		return err
-	}
-	var bestParent *database.ScanFolder
-	targetPath := filepath.Clean(targetFolder.Path)
-
-	for _, f := range allFolders {
-		if f.ID == targetFolder.ID {
-			continue
-		} // Pomiń samego siebie
-
-		parentPath := filepath.Clean(f.Path)
-
-		// Sprawdź czy parentPath jest prefixem targetPath
-		// Np. Parent: D:\Docs, Target: D:\Docs\Assets -> TAK
-		rel, err := filepath.Rel(parentPath, targetPath)
-		if err == nil && !strings.HasPrefix(rel, "..") {
-			// Jest w środku! Sprawdź czy to "najgłębszy" rodzic
-			if bestParent == nil || len(f.Path) > len(bestParent.Path) {
-				temp := f
-				bestParent = &temp
-			}
+	// Jeśli wyłączamy folder, a ma on rodzica, dajmy znać że assety są "ukryte"
+	if !isActive {
+		folder, _ := s.db.GetScanFolderById(s.ctx, id)
+		if parent := s.findBestParent(folder); parent != nil {
+			wailsRuntime.EventsEmit(s.ctx, "toast", map[string]string{
+				"type":    "info",
+				"title":   "Monitoring Paused",
+				"message": fmt.Sprintf("Assets hidden inside '%s'.", filepath.Base(parent.Path)),
+			})
 		}
 	}
 
-	// 4. Decyzja
+	return s.db.GetScanFolderById(s.ctx, id)
+}
+
+// DeleteFolder - KOSZ
+func (s *SettingsService) DeleteFolder(id int64) error {
+	targetFolder, err := s.db.GetScanFolderById(s.ctx, id)
+	if err != nil {
+		return err
+	}
+	bestParent := s.findBestParent(targetFolder)
+
+	// Logika Reparentingu (
 	if bestParent != nil {
-		s.logger.Info("Deleting folder but parent exists. Re-binding assets.",
+		s.logger.Info("Deleting folder. Moving assets to parent.",
 			"deleted", targetFolder.Path,
 			"new_parent", bestParent.Path)
 
-		// A. Przepnij assety do rodzica
-		err = s.db.MoveAssetsToFolder(ctx, database.MoveAssetsToFolderParams{
+		err = s.db.MoveAssetsToFolder(s.ctx, database.MoveAssetsToFolderParams{
 			ScanFolderID:   sql.NullInt64{Int64: bestParent.ID, Valid: true},
 			ScanFolderID_2: sql.NullInt64{Int64: targetFolder.ID, Valid: true},
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to move assets: %w", err)
 		}
-		runtime.EventsEmit(s.ctx, "toast", map[string]string{
+
+		wailsRuntime.EventsEmit(s.ctx, "toast", map[string]string{
 			"type":    "info",
-			"title":   "Assets Re-organized",
-			"message": fmt.Sprintf("Folder removed, but assets were moved to parent: %s", filepath.Base(bestParent.Path)),
+			"title":   "Assets Saved",
+			"message": fmt.Sprintf("Items moved to parent library: %s", filepath.Base(bestParent.Path)),
 		})
-
-	} else {
-		s.logger.Info("Deleting folder. No parent found. Assets will be hidden.")
 	}
-	return s.db.SoftDeleteScanFolder(ctx, id)
+	return s.db.SoftDeleteScanFolder(s.ctx, id)
 }
 
-// UpdateFolderStatus zmienia status aktywności folderu (włącz/wyłącz skanowanie).
-func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (database.ScanFolder, error) {
-	// TODO:
-	// 1. Wykonaj s.db.UpdateScanFolderStatus
-	// 2. Pobierz zaktualizowany obiekt (np. przez GetScanFolderByID - musisz dodać to query jeśli nie masz,
-	//    lub po prostu zwróć skonstruowany obiekt jeśli lenistwo wygra).
-	return database.ScanFolder{}, nil
+// AddFolder - Z obsługą przywracania (Restore)
+func (s *SettingsService) AddFolder(path string) (database.ScanFolder, error) {
+	if !s.ValidatePath(path) {
+		return database.ScanFolder{}, errors.New("folder does not exist")
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return database.ScanFolder{}, err
+	}
+
+	existing, err := s.db.GetScanFolderByPath(s.ctx, absPath)
+	if err == nil {
+		// ZNALEZIONO
+		if existing.IsDeleted {
+			s.logger.Info("Restoring folder from trash", "path", absPath)
+			err := s.db.RestoreScanFolder(s.ctx, existing.ID)
+			if err != nil {
+				return database.ScanFolder{}, err
+			}
+			if !existing.IsActive {
+				s.db.UpdateScanFolderStatus(s.ctx, database.UpdateScanFolderStatusParams{
+					IsActive: true,
+					ID:       existing.ID,
+				})
+			}
+			return s.db.GetScanFolderById(s.ctx, existing.ID)
+		}
+		return database.ScanFolder{}, errors.New("folder is already in library")
+	}
+	return s.db.CreateScanFolder(s.ctx, absPath)
 }
 
-// ValidatePath sprawdza tylko czy ścieżka istnieje i jest katalogiem (dla formularza UI).
+// Helper
+func (s *SettingsService) findBestParent(target database.ScanFolder) *database.ScanFolder {
+	allFolders, err := s.db.ListScanFolders(s.ctx)
+	if err != nil {
+		return nil
+	}
+
+	targetPath := filepath.Clean(target.Path)
+	var bestParent *database.ScanFolder
+
+	for i := range allFolders {
+		f := allFolders[i]
+		if f.ID == target.ID {
+			continue
+		}
+		if !f.IsActive {
+			continue
+		} // Ignorujemy wyłączone
+
+		parentPath := filepath.Clean(f.Path)
+		rel, err := filepath.Rel(parentPath, targetPath)
+
+		if err == nil && !strings.HasPrefix(rel, "..") {
+			if bestParent == nil || len(f.Path) > len(bestParent.Path) {
+				bestParent = &f
+			}
+		}
+	}
+	return bestParent
+}
+
+// ValidatePath sprawdza tylko czy ścieżka istnieje i jest katalogiem .
 func (s *SettingsService) ValidatePath(path string) bool {
-	// TODO: Użyj os.Stat. Zwróć true tylko jeśli err == nil i FileInfo.IsDir() jest true.
-	return false
+	file, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return file.IsDir()
 }
 
-// OpenInExplorer otwiera systemowy eksplorator plików na danej ścieżce.
+// OpenInExplorer otwiera menedżer plików i próbuje zaznaczyć wskazany plik/folder.
 func (s *SettingsService) OpenInExplorer(path string) error {
-	// TODO: Wykorzystaj runtime.GOOS i exec.Command ("explorer", "open", "xdg-open").
-	return nil
+	cleanPath := filepath.Clean(path)
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", "/select,", cleanPath)
+	case "darwin":
+		cmd = exec.Command("open", "-R", cleanPath)
+	default:
+		dir := filepath.Dir(cleanPath)
+		if s.ValidatePath(cleanPath) {
+			dir = cleanPath
+		}
+		cmd = exec.Command("xdg-open", dir)
+	}
+
+	return cmd.Start()
+}
+
+func (s *SettingsService) OpenFile(path string) error {
+	cleanPath := filepath.Clean(path)
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", cleanPath)
+	case "darwin":
+		cmd = exec.Command("open", cleanPath)
+	default:
+		cmd = exec.Command("xdg-open", cleanPath)
+	}
+
+	return cmd.Start()
 }

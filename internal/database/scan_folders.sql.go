@@ -10,9 +10,9 @@ import (
 )
 
 const createScanFolder = `-- name: CreateScanFolder :one
-INSERT INTO scan_folders (path, is_active, last_scanned)
-VALUES (?, 1, NULL)
-RETURNING id, path, is_active, last_scanned, date_added
+INSERT INTO scan_folders (path, is_active, last_scanned, is_deleted)
+VALUES (?, 1, NULL, 0)
+RETURNING id, path, is_active, last_scanned, date_added, is_deleted
 `
 
 func (q *Queries) CreateScanFolder(ctx context.Context, path string) (ScanFolder, error) {
@@ -24,12 +24,13 @@ func (q *Queries) CreateScanFolder(ctx context.Context, path string) (ScanFolder
 		&i.IsActive,
 		&i.LastScanned,
 		&i.DateAdded,
+		&i.IsDeleted,
 	)
 	return i, err
 }
 
 const getScanFolderById = `-- name: GetScanFolderById :one
-SELECT id, path, is_active, last_scanned, date_added FROM scan_folders
+SELECT id, path, is_active, last_scanned, date_added, is_deleted FROM scan_folders
 WHERE id = ? LIMIT 1
 `
 
@@ -42,12 +43,13 @@ func (q *Queries) GetScanFolderById(ctx context.Context, id int64) (ScanFolder, 
 		&i.IsActive,
 		&i.LastScanned,
 		&i.DateAdded,
+		&i.IsDeleted,
 	)
 	return i, err
 }
 
 const getScanFolderByPath = `-- name: GetScanFolderByPath :one
-SELECT id, path, is_active, last_scanned, date_added FROM scan_folders
+SELECT id, path, is_active, last_scanned, date_added, is_deleted FROM scan_folders
 WHERE path = ? LIMIT 1
 `
 
@@ -60,12 +62,13 @@ func (q *Queries) GetScanFolderByPath(ctx context.Context, path string) (ScanFol
 		&i.IsActive,
 		&i.LastScanned,
 		&i.DateAdded,
+		&i.IsDeleted,
 	)
 	return i, err
 }
 
 const listScanFolders = `-- name: ListScanFolders :many
-SELECT id, path, is_active, last_scanned, date_added FROM scan_folders
+SELECT id, path, is_active, last_scanned, date_added, is_deleted FROM scan_folders
 WHERE is_deleted = 0
 ORDER BY path ASC
 `
@@ -85,6 +88,7 @@ func (q *Queries) ListScanFolders(ctx context.Context) ([]ScanFolder, error) {
 			&i.IsActive,
 			&i.LastScanned,
 			&i.DateAdded,
+			&i.IsDeleted,
 		); err != nil {
 			return nil, err
 		}
@@ -139,7 +143,7 @@ WHERE id = ?
 `
 
 type UpdateScanFolderStatusParams struct {
-	IsActive bool  `json:"is_active"`
+	IsActive bool  `json:"isActive"`
 	ID       int64 `json:"id"`
 }
 

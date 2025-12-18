@@ -16,8 +16,8 @@ INSERT OR IGNORE INTO asset_material_sets (material_set_id, asset_id) VALUES (?,
 `
 
 type AddAssetToMaterialSetParams struct {
-	MaterialSetID int64 `json:"material_set_id"`
-	AssetID       int64 `json:"asset_id"`
+	MaterialSetID int64 `json:"materialSetId"`
+	AssetID       int64 `json:"assetId"`
 }
 
 func (q *Queries) AddAssetToMaterialSet(ctx context.Context, arg AddAssetToMaterialSetParams) error {
@@ -35,9 +35,9 @@ RETURNING id, name, description, cover_asset_id, custom_cover_url, custom_color,
 type CreateMaterialSetParams struct {
 	Name           string         `json:"name"`
 	Description    sql.NullString `json:"description"`
-	CoverAssetID   sql.NullInt64  `json:"cover_asset_id"`
-	CustomCoverUrl sql.NullString `json:"custom_cover_url"`
-	CustomColor    sql.NullString `json:"custom_color"`
+	CoverAssetID   sql.NullInt64  `json:"coverAssetId"`
+	CustomCoverUrl sql.NullString `json:"customCoverUrl"`
+	CustomColor    sql.NullString `json:"customColor"`
 }
 
 func (q *Queries) CreateMaterialSet(ctx context.Context, arg CreateMaterialSetParams) (MaterialSet, error) {
@@ -100,7 +100,7 @@ LIMIT ? OFFSET ?
 `
 
 type ListAssetsInMaterialSetParams struct {
-	MaterialSetID int64 `json:"material_set_id"`
+	MaterialSetID int64 `json:"materialSetId"`
 	Limit         int64 `json:"limit"`
 	Offset        int64 `json:"offset"`
 }
@@ -163,12 +163,12 @@ type ListMaterialSetsRow struct {
 	ID             int64          `json:"id"`
 	Name           string         `json:"name"`
 	Description    sql.NullString `json:"description"`
-	CoverAssetID   sql.NullInt64  `json:"cover_asset_id"`
-	CustomCoverUrl sql.NullString `json:"custom_cover_url"`
-	CustomColor    sql.NullString `json:"custom_color"`
-	DateAdded      time.Time      `json:"date_added"`
-	LastModified   time.Time      `json:"last_modified"`
-	TotalAssets    int64          `json:"total_assets"`
+	CoverAssetID   sql.NullInt64  `json:"coverAssetId"`
+	CustomCoverUrl sql.NullString `json:"customCoverUrl"`
+	CustomColor    sql.NullString `json:"customColor"`
+	DateAdded      time.Time      `json:"dateAdded"`
+	LastModified   time.Time      `json:"lastModified"`
+	TotalAssets    int64          `json:"totalAssets"`
 }
 
 func (q *Queries) ListMaterialSets(ctx context.Context) ([]ListMaterialSetsRow, error) {
@@ -209,8 +209,8 @@ DELETE FROM asset_material_sets WHERE material_set_id = ? AND asset_id = ?
 `
 
 type RemoveAssetFromMaterialSetParams struct {
-	MaterialSetID int64 `json:"material_set_id"`
-	AssetID       int64 `json:"asset_id"`
+	MaterialSetID int64 `json:"materialSetId"`
+	AssetID       int64 `json:"assetId"`
 }
 
 func (q *Queries) RemoveAssetFromMaterialSet(ctx context.Context, arg RemoveAssetFromMaterialSetParams) error {
@@ -230,9 +230,9 @@ WHERE id = ?
 type UpdateMaterialSetParams struct {
 	Name           string         `json:"name"`
 	Description    sql.NullString `json:"description"`
-	CoverAssetID   sql.NullInt64  `json:"cover_asset_id"`
-	CustomCoverUrl sql.NullString `json:"custom_cover_url"`
-	CustomColor    sql.NullString `json:"custom_color"`
+	CoverAssetID   sql.NullInt64  `json:"coverAssetId"`
+	CustomCoverUrl sql.NullString `json:"customCoverUrl"`
+	CustomColor    sql.NullString `json:"customColor"`
 	ID             int64          `json:"id"`
 }
 

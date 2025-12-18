@@ -15,7 +15,7 @@ INSERT INTO saved_searches (name, filter_json) VALUES (?, ?) RETURNING id, name,
 
 type CreateSavedSearchParams struct {
 	Name       string `json:"name"`
-	FilterJson string `json:"filter_json"`
+	FilterJson string `json:"filterJson"`
 }
 
 func (q *Queries) CreateSavedSearch(ctx context.Context, arg CreateSavedSearchParams) (SavedSearch, error) {

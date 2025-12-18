@@ -1,14 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Spacer } from "@heroui/spacer";
 import { Switch } from "@heroui/switch";
 import { cn } from "@heroui/theme";
 import { Divider } from "@heroui/divider";
 import { Chip } from "@heroui/chip";
 import { Snippet } from "@heroui/snippet";
-import { CircularProgress, Progress } from "@heroui/progress";
+import { CircularProgress } from "@heroui/progress";
 import { Spinner } from "@heroui/spinner";
 import {
   FolderPlus,
@@ -18,13 +17,12 @@ import {
   StopCircle,
   AlertCircle,
   CheckCircle2,
-  Search,
   FolderOpen,
 } from "lucide-react";
 import { useScanFolders } from "./hooks/useScanFolders";
-import { AxiosError } from "axios";
 import { useScanProgress } from "./hooks/useScanProgress";
 import { addToast } from "@heroui/toast";
+import { EventsOn } from "@wailsjs/runtime/runtime";
 
 export default function SettingsPage() {
   const {
@@ -38,9 +36,11 @@ export default function SettingsPage() {
     startScan,
     isStartingScan,
     extensions,
-    updateExtensions,
+    addExtension,
+    removeExtension,
     openInExplorer,
   } = useScanFolders();
+
   const [pathInput, setPathInput] = useState("");
   const [extInput, setExtInput] = useState("");
   const [validationState, setValidationState] = useState<
@@ -48,6 +48,20 @@ export default function SettingsPage() {
   >("idle");
   const [backendError, setBackendError] = useState<string>("");
   const { isScanning, progress } = useScanProgress();
+
+  // --- GLOBAL TOAST LISTENER ---
+  useEffect(() => {
+    const stopToast = EventsOn("toast", (data: any) => {
+      addToast({
+        title: data.title,
+        description: data.message,
+        color: data.type === "error" ? "danger" : data.type,
+        timeout: 4000,
+      });
+    });
+    return () => stopToast();
+  }, []);
+
   const handleValidate = async () => {
     if (!pathInput.trim()) {
       setValidationState("idle");
@@ -71,14 +85,10 @@ export default function SettingsPage() {
         setValidationState("idle");
       } catch (error: any) {
         console.error("Błąd dodawania:", error);
-        const serverMessage =
-          error.response?.data?.message ||
-          error.response?.data?.errors?.[0] ||
-          "Failed to add folder. Check logs.";
+        const serverMessage = error || "Failed to add folder. Check logs.";
 
         setBackendError(serverMessage);
         setValidationState("invalid");
-        setPathInput("");
       }
     }
   };
@@ -86,8 +96,9 @@ export default function SettingsPage() {
   const getInputColor = () => {
     if (validationState === "valid") return "success";
     if (validationState === "invalid") return "danger";
-    return "default"; // Szary dla stanu "idle"
+    return "default";
   };
+
   const getEndContent = () => {
     if (isValidating) return <Spinner size="sm" />;
     if (validationState === "valid")
@@ -96,15 +107,14 @@ export default function SettingsPage() {
       return <AlertCircle className="text-danger" />;
     return null;
   };
+
   const handleAddExtension = async (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && extInput.trim()) {
       let newExt = extInput.trim().toLowerCase();
-      // Auto-fix: dodaj kropkę jeśli user zapomniał
       if (!newExt.startsWith(".")) newExt = "." + newExt;
 
       if (!extensions.includes(newExt)) {
-        const newStats = [...extensions, newExt];
-        await updateExtensions(newStats);
+        await addExtension(newExt);
         setExtInput("");
       } else {
         addToast({
@@ -113,13 +123,12 @@ export default function SettingsPage() {
           color: "warning",
         });
         setExtInput("");
-        return;
       }
     }
   };
+
   const handleRemoveExtension = async (extToRemove: string) => {
-    const newStats = extensions.filter((e) => e !== extToRemove);
-    await updateExtensions(newStats);
+    await removeExtension(extToRemove);
   };
 
   return (
@@ -142,14 +151,14 @@ export default function SettingsPage() {
                 Scanner Status
               </span>
               <div className="flex items-center gap-2">
-                {/* STATUS TEXT */}
                 <span
-                  className={`text-sm font-bold ${isScanning ? "text-success" : "text-default-400"}`}
+                  className={`text-sm font-bold ${
+                    isScanning ? "text-success" : "text-default-400"
+                  }`}
                 >
                   {isScanning ? "RUNNING" : "IDLE"}
                 </span>
 
-                {/* KOŁOWY PROGRESS (Tylko gdy skanuje) */}
                 {isScanning && (
                   <CircularProgress
                     size="sm"
@@ -186,7 +195,7 @@ export default function SettingsPage() {
         </Card>
       </div>
 
-      {/* SEKCJA 2: ADD NEW FOLDER (Hybrid Input) */}
+      {/* SEKCJA 2: ADD NEW FOLDER */}
       <Card className="w-full overflow-visible" shadow="sm">
         <CardHeader className="flex flex-col items-start px-6 pt-6 pb-0">
           <h4 className="text-large font-bold">Add Source Folder</h4>
@@ -254,8 +263,7 @@ export default function SettingsPage() {
               <Card
                 key={folder.id}
                 className={cn(
-                  "flex items-center justify-between p-4  rounded-lg transition-all",
-
+                  "flex items-center justify-between p-4 rounded-lg transition-all",
                   !folder.isActive &&
                     "opacity-60 bg-default-100 grayscale-[0.5]",
                 )}
@@ -263,7 +271,11 @@ export default function SettingsPage() {
                 <CardBody className="flex flex-row items-center justify-between p-4 gap-4">
                   <div className="flex items-center gap-4 overflow-hidden flex-1">
                     <div
-                      className={`p-3 rounded-xl ${folder.isActive ? "bg-primary/10 text-primary" : "bg-default-100 text-default-400"}`}
+                      className={`p-3 rounded-xl ${
+                        folder.isActive
+                          ? "bg-primary/10 text-primary"
+                          : "bg-default-100 text-default-400"
+                      }`}
                     >
                       <Folder size={24} />
                     </div>
@@ -323,6 +335,8 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* SEKCJA 4: FILE EXTENSIONS */}
       <div className="space-y-4">
         <h2 className="text-2xl font-bold">File Types</h2>
         <Card className="bg-content1">
@@ -347,7 +361,7 @@ export default function SettingsPage() {
                   key={ext}
                   onClose={() => handleRemoveExtension(ext)}
                   variant="flat"
-                  color="primary" // Ładny kolor dla tagów
+                  color="primary"
                 >
                   {ext}
                 </Chip>

@@ -33,16 +33,24 @@ WHERE id = ?
 RETURNING *;
 
 -- name: ListAssets :many
-SELECT * FROM assets
-WHERE is_deleted = 0
-ORDER BY date_added DESC
+SELECT a.* FROM assets a
+JOIN scan_folders f ON a.scan_folder_id = f.id
+WHERE a.is_deleted = 0
+  AND f.is_deleted = 0
+  AND f.is_active = 1
+ORDER BY a.date_added DESC
 LIMIT ? OFFSET ?;
 
 -- name: ListFavoriteAssets :many
-SELECT * FROM assets
-WHERE is_favorite = 1 AND is_deleted = 0
-ORDER BY date_added DESC
+SELECT a.* FROM assets a
+JOIN scan_folders f ON a.scan_folder_id = f.id
+WHERE a.is_favorite = 1
+  AND a.is_deleted = 0
+  AND f.is_deleted = 0
+  AND f.is_active = 1
+ORDER BY a.date_added DESC
 LIMIT ? OFFSET ?;
+
 
 -- name: ListDeletedAssets :many
 SELECT * FROM assets
@@ -53,7 +61,11 @@ LIMIT ? OFFSET ?;
 -- name: ListUntaggedAssets :many
 SELECT a.* FROM assets a
 LEFT JOIN asset_tags at ON a.id = at.asset_id
-WHERE at.tag_id IS NULL AND a.is_deleted = 0
+JOIN scan_folders f ON a.scan_folder_id = f.id -- DODANO JOIN
+WHERE at.tag_id IS NULL
+  AND a.is_deleted = 0
+  AND f.is_deleted = 0
+  AND f.is_active = 1
 GROUP BY a.id
 LIMIT ? OFFSET ?;
 
@@ -97,32 +109,42 @@ SELECT
     COUNT(*) as total_count,
     COALESCE(SUM(file_size), 0) as total_size,
     MAX(last_scanned) as last_scan
-FROM assets
-WHERE is_deleted = 0;
+FROM assets a
+JOIN scan_folders f ON a.scan_folder_id = f.id
+WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1;
 
 -- name: GetSidebarStats :one
 SELECT
-    (SELECT COUNT(*) FROM assets WHERE is_deleted = 0) as all_count,
-    (SELECT COUNT(*) FROM assets WHERE is_favorite = 1 AND is_deleted = 0) as favorites_count,
+    (SELECT COUNT(*) FROM assets a
+     JOIN scan_folders f ON a.scan_folder_id = f.id
+     WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as all_count,
+
+    (SELECT COUNT(*) FROM assets a
+     JOIN scan_folders f ON a.scan_folder_id = f.id
+     WHERE a.is_favorite = 1 AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as favorites_count,
+
     (SELECT COUNT(*) FROM assets WHERE is_deleted = 1) as trash_count,
+
     (SELECT COUNT(DISTINCT a.id)
      FROM assets a
      LEFT JOIN asset_tags at ON a.id = at.asset_id
-     WHERE at.tag_id IS NULL AND a.is_deleted = 0) as uncategorized_count;
+     JOIN scan_folders f ON a.scan_folder_id = f.id
+     WHERE at.tag_id IS NULL AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as uncategorized_count;
 
- -- name: GetAllColors :many
+-- name: GetAllColors :many
 SELECT DISTINCT dominant_color
-FROM assets
-WHERE is_deleted = 0 AND dominant_color IS NOT NULL AND dominant_color != '';
+FROM assets a
+JOIN scan_folders f ON a.scan_folder_id = f.id
+WHERE a.is_deleted = 0
+  AND f.is_deleted = 0
+  AND f.is_active = 1
+  AND dominant_color IS NOT NULL AND dominant_color != '';
 
 -- name: MoveAssetsToFolder :exec
-UPDATE assets
-SET scan_folder_id = ?
-WHERE scan_folder_id = ?;
+UPDATE assets SET scan_folder_id = ? WHERE scan_folder_id = ?;
 
 -- name: ClaimAssetsForPath :exec
--- Przypisz do nowego folderu wszystkie assety, które fizycznie w nim leżą, ale są przypisane do innego folderu (np. rodzica)
 UPDATE assets
 SET scan_folder_id = ?
-WHERE file_path LIKE ? || '%' -- Wszystko co zaczyna się od ścieżki folderu
+WHERE file_path LIKE ? || '%'
 AND scan_folder_id != ?;

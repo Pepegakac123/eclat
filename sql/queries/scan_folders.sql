@@ -11,10 +11,9 @@ WHERE path = ? LIMIT 1;
 SELECT * FROM scan_folders
 WHERE id = ? LIMIT 1;
 
-
 -- name: CreateScanFolder :one
-INSERT INTO scan_folders (path, is_active, last_scanned)
-VALUES (?, 1, NULL)
+INSERT INTO scan_folders (path, is_active, last_scanned, is_deleted)
+VALUES (?, 1, NULL, 0)
 RETURNING *;
 
 -- name: UpdateScanFolderStatus :exec

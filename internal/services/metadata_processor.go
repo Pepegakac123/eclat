@@ -123,10 +123,7 @@ func CalculateDominantColor(img image.Image) (string, error) {
 	return hexColor, nil
 }
 
-func FindClosestPaletteColor(hexInput string, palette []struct {
-	Name string
-	Hex  string
-}) (string, error) {
+func FindClosestPaletteColor(hexInput string, palette []PaletteColor) (string, error) {
 	inputColor, err := colorful.Hex(hexInput)
 	if err != nil {
 		return "", fmt.Errorf("invalid hex color: %w", err)

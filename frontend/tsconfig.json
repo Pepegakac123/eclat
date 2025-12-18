@@ -6,7 +6,8 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@wailsjs/*": ["./wailsjs/*"]
     },
 
     /* Bundler mode */
@@ -23,6 +24,6 @@
     "noUnusedParameters": false, // POTEM ZMIENIĆ CHANGE TODO: Ignoruj nieużywane parametry funkcji
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
+  "include": ["src", "wailsjs"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

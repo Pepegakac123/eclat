@@ -8,15 +8,17 @@ import (
 
 // App struct
 type App struct {
-	ctx     context.Context
-	logger  *slog.Logger
-	Scanner *services.Scanner
+	ctx             context.Context
+	logger          *slog.Logger
+	Scanner         *services.Scanner
+	SettingsService *services.SettingsService
 }
 
-func NewApp(scanner *services.Scanner) *App {
+func NewApp(scanner *services.Scanner, settingsService *services.SettingsService) *App {
 	return &App{
-		logger:  slog.Default(),
-		Scanner: scanner,
+		logger:          slog.Default(),
+		Scanner:         scanner,
+		SettingsService: settingsService,
 	}
 }
 

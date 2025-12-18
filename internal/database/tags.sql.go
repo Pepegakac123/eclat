@@ -14,8 +14,8 @@ INSERT OR IGNORE INTO asset_tags (asset_id, tag_id) VALUES (?, ?)
 `
 
 type AddTagToAssetParams struct {
-	AssetID int64 `json:"asset_id"`
-	TagID   int64 `json:"tag_id"`
+	AssetID int64 `json:"assetId"`
+	TagID   int64 `json:"tagId"`
 }
 
 func (q *Queries) AddTagToAsset(ctx context.Context, arg AddTagToAssetParams) error {
@@ -95,7 +95,7 @@ ORDER BY asset_count DESC
 type ListTagsRow struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
-	AssetCount int64  `json:"asset_count"`
+	AssetCount int64  `json:"assetCount"`
 }
 
 func (q *Queries) ListTags(ctx context.Context) ([]ListTagsRow, error) {
@@ -126,8 +126,8 @@ DELETE FROM asset_tags WHERE asset_id = ? AND tag_id = ?
 `
 
 type RemoveTagFromAssetParams struct {
-	AssetID int64 `json:"asset_id"`
-	TagID   int64 `json:"tag_id"`
+	AssetID int64 `json:"assetId"`
+	TagID   int64 `json:"tagId"`
 }
 
 func (q *Queries) RemoveTagFromAsset(ctx context.Context, arg RemoveTagFromAssetParams) error {

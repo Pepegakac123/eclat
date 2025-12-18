@@ -14,17 +14,16 @@ import (
 const claimAssetsForPath = `-- name: ClaimAssetsForPath :exec
 UPDATE assets
 SET scan_folder_id = ?
-WHERE file_path LIKE ? || '%' -- Wszystko co zaczyna się od ścieżki folderu
-AND scan_folder_
+WHERE file_path LIKE ? || '%'
+AND scan_folder_id != ?
 `
 
 type ClaimAssetsForPathParams struct {
-	ScanFolderID   sql.NullInt64  `json:"scan_folder_id"`
-	Column2        sql.NullString `json:"column_2"`
-	ScanFolderID_2 sql.NullInt64  `json:"scan_folder_id_2"`
+	ScanFolderID   sql.NullInt64  `json:"scanFolderId"`
+	Column2        sql.NullString `json:"column2"`
+	ScanFolderID_2 sql.NullInt64  `json:"scanFolderId2"`
 }
 
-// Przypisz do nowego folderu wszystkie assety, które fizycznie w nim leżą, ale są przypisane do innego folderu (np. rodzica)
 func (q *Queries) ClaimAssetsForPath(ctx context.Context, arg ClaimAssetsForPathParams) error {
 	_, err := q.exec(ctx, q.claimAssetsForPathStmt, claimAssetsForPath, arg.ScanFolderID, arg.Column2, arg.ScanFolderID_2)
 	return err
@@ -43,20 +42,20 @@ RETURNING id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, 
 `
 
 type CreateAssetParams struct {
-	ScanFolderID    sql.NullInt64  `json:"scan_folder_id"`
-	FileName        string         `json:"file_name"`
-	FilePath        string         `json:"file_path"`
-	FileType        string         `json:"file_type"`
-	FileSize        int64          `json:"file_size"`
-	ThumbnailPath   string         `json:"thumbnail_path"`
-	FileHash        sql.NullString `json:"file_hash"`
-	ImageWidth      sql.NullInt64  `json:"image_width"`
-	ImageHeight     sql.NullInt64  `json:"image_height"`
-	DominantColor   sql.NullString `json:"dominant_color"`
-	BitDepth        sql.NullInt64  `json:"bit_depth"`
-	HasAlphaChannel sql.NullBool   `json:"has_alpha_channel"`
-	LastModified    time.Time      `json:"last_modified"`
-	LastScanned     time.Time      `json:"last_scanned"`
+	ScanFolderID    sql.NullInt64  `json:"scanFolderId"`
+	FileName        string         `json:"fileName"`
+	FilePath        string         `json:"filePath"`
+	FileType        string         `json:"fileType"`
+	FileSize        int64          `json:"fileSize"`
+	ThumbnailPath   string         `json:"thumbnailPath"`
+	FileHash        sql.NullString `json:"fileHash"`
+	ImageWidth      sql.NullInt64  `json:"imageWidth"`
+	ImageHeight     sql.NullInt64  `json:"imageHeight"`
+	DominantColor   sql.NullString `json:"dominantColor"`
+	BitDepth        sql.NullInt64  `json:"bitDepth"`
+	HasAlphaChannel sql.NullBool   `json:"hasAlphaChannel"`
+	LastModified    time.Time      `json:"lastModified"`
+	LastScanned     time.Time      `json:"lastScanned"`
 }
 
 func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset, error) {
@@ -120,6 +119,39 @@ DELETE FROM assets WHERE id = ?
 func (q *Queries) DeleteAssetPermanent(ctx context.Context, id int64) error {
 	_, err := q.exec(ctx, q.deleteAssetPermanentStmt, deleteAssetPermanent, id)
 	return err
+}
+
+const getAllColors = `-- name: GetAllColors :many
+SELECT DISTINCT dominant_color
+FROM assets a
+JOIN scan_folders f ON a.scan_folder_id = f.id
+WHERE a.is_deleted = 0
+  AND f.is_deleted = 0
+  AND f.is_active = 1
+  AND dominant_color IS NOT NULL AND dominant_color != ''
+`
+
+func (q *Queries) GetAllColors(ctx context.Context) ([]sql.NullString, error) {
+	rows, err := q.query(ctx, q.getAllColorsStmt, getAllColors)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []sql.NullString
+	for rows.Next() {
+		var dominant_color sql.NullString
+		if err := rows.Scan(&dominant_color); err != nil {
+			return nil, err
+		}
+		items = append(items, dominant_color)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getAssetByHash = `-- name: GetAssetByHash :one
@@ -233,14 +265,15 @@ SELECT
     COUNT(*) as total_count,
     COALESCE(SUM(file_size), 0) as total_size,
     MAX(last_scanned) as last_scan
-FROM assets
-WHERE is_deleted = 0
+FROM assets a
+JOIN scan_folders f ON a.scan_folder_id = f.id
+WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1
 `
 
 type GetLibraryStatsRow struct {
-	TotalCount int64       `json:"total_count"`
-	TotalSize  interface{} `json:"total_size"`
-	LastScan   interface{} `json:"last_scan"`
+	TotalCount int64       `json:"totalCount"`
+	TotalSize  interface{} `json:"totalSize"`
+	LastScan   interface{} `json:"lastScan"`
 }
 
 func (q *Queries) GetLibraryStats(ctx context.Context) (GetLibraryStatsRow, error) {
@@ -252,20 +285,28 @@ func (q *Queries) GetLibraryStats(ctx context.Context) (GetLibraryStatsRow, erro
 
 const getSidebarStats = `-- name: GetSidebarStats :one
 SELECT
-    (SELECT COUNT(*) FROM assets WHERE is_deleted = 0) as all_count,
-    (SELECT COUNT(*) FROM assets WHERE is_favorite = 1 AND is_deleted = 0) as favorites_count,
+    (SELECT COUNT(*) FROM assets a
+     JOIN scan_folders f ON a.scan_folder_id = f.id
+     WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as all_count,
+
+    (SELECT COUNT(*) FROM assets a
+     JOIN scan_folders f ON a.scan_folder_id = f.id
+     WHERE a.is_favorite = 1 AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as favorites_count,
+
     (SELECT COUNT(*) FROM assets WHERE is_deleted = 1) as trash_count,
+
     (SELECT COUNT(DISTINCT a.id)
      FROM assets a
      LEFT JOIN asset_tags at ON a.id = at.asset_id
-     WHERE at.tag_id IS NULL AND a.is_deleted = 0) as uncategorized_count
+     JOIN scan_folders f ON a.scan_folder_id = f.id
+     WHERE at.tag_id IS NULL AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as uncategorized_count
 `
 
 type GetSidebarStatsRow struct {
-	AllCount           int64 `json:"all_count"`
-	FavoritesCount     int64 `json:"favorites_count"`
-	TrashCount         int64 `json:"trash_count"`
-	UncategorizedCount int64 `json:"uncategorized_count"`
+	AllCount           int64 `json:"allCount"`
+	FavoritesCount     int64 `json:"favoritesCount"`
+	TrashCount         int64 `json:"trashCount"`
+	UncategorizedCount int64 `json:"uncategorizedCount"`
 }
 
 func (q *Queries) GetSidebarStats(ctx context.Context) (GetSidebarStatsRow, error) {
@@ -281,9 +322,12 @@ func (q *Queries) GetSidebarStats(ctx context.Context) (GetSidebarStatsRow, erro
 }
 
 const listAssets = `-- name: ListAssets :many
-SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at FROM assets
-WHERE is_deleted = 0
-ORDER BY date_added DESC
+SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at FROM assets a
+JOIN scan_folders f ON a.scan_folder_id = f.id
+WHERE a.is_deleted = 0
+  AND f.is_deleted = 0
+  AND f.is_active = 1
+ORDER BY a.date_added DESC
 LIMIT ? OFFSET ?
 `
 
@@ -344,10 +388,10 @@ SELECT id,file_path,last_modified,is_deleted,scan_folder_id FROM assets
 
 type ListAssetsForCacheRow struct {
 	ID           int64         `json:"id"`
-	FilePath     string        `json:"file_path"`
-	LastModified time.Time     `json:"last_modified"`
-	IsDeleted    bool          `json:"is_deleted"`
-	ScanFolderID sql.NullInt64 `json:"scan_folder_id"`
+	FilePath     string        `json:"filePath"`
+	LastModified time.Time     `json:"lastModified"`
+	IsDeleted    bool          `json:"isDeleted"`
+	ScanFolderID sql.NullInt64 `json:"scanFolderId"`
 }
 
 func (q *Queries) ListAssetsForCache(ctx context.Context) ([]ListAssetsForCacheRow, error) {
@@ -438,9 +482,13 @@ func (q *Queries) ListDeletedAssets(ctx context.Context, arg ListDeletedAssetsPa
 }
 
 const listFavoriteAssets = `-- name: ListFavoriteAssets :many
-SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at FROM assets
-WHERE is_favorite = 1 AND is_deleted = 0
-ORDER BY date_added DESC
+SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at FROM assets a
+JOIN scan_folders f ON a.scan_folder_id = f.id
+WHERE a.is_favorite = 1
+  AND a.is_deleted = 0
+  AND f.is_deleted = 0
+  AND f.is_active = 1
+ORDER BY a.date_added DESC
 LIMIT ? OFFSET ?
 `
 
@@ -498,7 +546,11 @@ func (q *Queries) ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssets
 const listUntaggedAssets = `-- name: ListUntaggedAssets :many
 SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at FROM assets a
 LEFT JOIN asset_tags at ON a.id = at.asset_id
-WHERE at.tag_id IS NULL AND a.is_deleted = 0
+JOIN scan_folders f ON a.scan_folder_id = f.id -- DODANO JOIN
+WHERE at.tag_id IS NULL
+  AND a.is_deleted = 0
+  AND f.is_deleted = 0
+  AND f.is_active = 1
 GROUP BY a.id
 LIMIT ? OFFSET ?
 `
@@ -555,14 +607,12 @@ func (q *Queries) ListUntaggedAssets(ctx context.Context, arg ListUntaggedAssets
 }
 
 const moveAssetsToFolder = `-- name: MoveAssetsToFolder :exec
-UPDATE assets
-SET scan_folder_id = ?
-WHERE scan_folder_id = ?
+UPDATE assets SET scan_folder_id = ? WHERE scan_folder_id = ?
 `
 
 type MoveAssetsToFolderParams struct {
-	ScanFolderID   sql.NullInt64 `json:"scan_folder_id"`
-	ScanFolderID_2 sql.NullInt64 `json:"scan_folder_id_2"`
+	ScanFolderID   sql.NullInt64 `json:"scanFolderId"`
+	ScanFolderID_2 sql.NullInt64 `json:"scanFolderId2"`
 }
 
 func (q *Queries) MoveAssetsToFolder(ctx context.Context, arg MoveAssetsToFolderParams) error {
@@ -622,9 +672,9 @@ WHERE id = ?
 `
 
 type UpdateAssetLocationParams struct {
-	FilePath     string        `json:"file_path"`
-	ScanFolderID sql.NullInt64 `json:"scan_folder_id"`
-	LastScanned  time.Time     `json:"last_scanned"`
+	FilePath     string        `json:"filePath"`
+	ScanFolderID sql.NullInt64 `json:"scanFolderId"`
+	LastScanned  time.Time     `json:"lastScanned"`
 	ID           int64         `json:"id"`
 }
 
@@ -652,8 +702,8 @@ RETURNING id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, 
 type UpdateAssetMetadataParams struct {
 	Description   sql.NullString `json:"description"`
 	Rating        sql.NullInt64  `json:"rating"`
-	IsFavorite    sql.NullBool   `json:"is_favorite"`
-	ThumbnailPath sql.NullString `json:"thumbnail_path"`
+	IsFavorite    sql.NullBool   `json:"isFavorite"`
+	ThumbnailPath sql.NullString `json:"thumbnailPath"`
 	ID            int64          `json:"id"`
 }
 
@@ -700,9 +750,9 @@ WHERE id = ?
 `
 
 type UpdateAssetScanStatusParams struct {
-	LastScanned  time.Time `json:"last_scanned"`
-	FileSize     int64     `json:"file_size"`
-	LastModified time.Time `json:"last_modified"`
+	LastScanned  time.Time `json:"lastScanned"`
+	FileSize     int64     `json:"fileSize"`
+	LastModified time.Time `json:"lastModified"`
 	ID           int64     `json:"id"`
 }
 
