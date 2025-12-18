@@ -58,7 +58,7 @@ GROUP BY a.id
 LIMIT ? OFFSET ?;
 
 -- name: ListAssetsForCache :many
-SELECT id,file_path,last_modified,is_deleted FROM assets;
+SELECT id,file_path,last_modified,is_deleted,scan_folder_id FROM assets;
 
 -- name: SetAssetRating :exec
 UPDATE assets SET rating = ? WHERE id = ?;
@@ -114,3 +114,15 @@ SELECT
 SELECT DISTINCT dominant_color
 FROM assets
 WHERE is_deleted = 0 AND dominant_color IS NOT NULL AND dominant_color != '';
+
+-- name: MoveAssetsToFolder :exec
+UPDATE assets
+SET scan_folder_id = ?
+WHERE scan_folder_id = ?;
+
+-- name: ClaimAssetsForPath :exec
+-- Przypisz do nowego folderu wszystkie assety, które fizycznie w nim leżą, ale są przypisane do innego folderu (np. rodzica)
+UPDATE assets
+SET scan_folder_id = ?
+WHERE file_path LIKE ? || '%' -- Wszystko co zaczyna się od ścieżki folderu
+AND scan_folder_id != ?;

@@ -11,6 +11,25 @@ import (
 	"time"
 )
 
+const claimAssetsForPath = `-- name: ClaimAssetsForPath :exec
+UPDATE assets
+SET scan_folder_id = ?
+WHERE file_path LIKE ? || '%' -- Wszystko co zaczyna się od ścieżki folderu
+AND scan_folder_
+`
+
+type ClaimAssetsForPathParams struct {
+	ScanFolderID   sql.NullInt64  `json:"scan_folder_id"`
+	Column2        sql.NullString `json:"column_2"`
+	ScanFolderID_2 sql.NullInt64  `json:"scan_folder_id_2"`
+}
+
+// Przypisz do nowego folderu wszystkie assety, które fizycznie w nim leżą, ale są przypisane do innego folderu (np. rodzica)
+func (q *Queries) ClaimAssetsForPath(ctx context.Context, arg ClaimAssetsForPathParams) error {
+	_, err := q.exec(ctx, q.claimAssetsForPathStmt, claimAssetsForPath, arg.ScanFolderID, arg.Column2, arg.ScanFolderID_2)
+	return err
+}
+
 const createAsset = `-- name: CreateAsset :one
 INSERT INTO assets (
     scan_folder_id, file_name, file_path, file_type, file_size,
@@ -320,14 +339,15 @@ func (q *Queries) ListAssets(ctx context.Context, arg ListAssetsParams) ([]Asset
 }
 
 const listAssetsForCache = `-- name: ListAssetsForCache :many
-SELECT id,file_path,last_modified,is_deleted FROM assets
+SELECT id,file_path,last_modified,is_deleted,scan_folder_id FROM assets
 `
 
 type ListAssetsForCacheRow struct {
-	ID           int64     `json:"id"`
-	FilePath     string    `json:"file_path"`
-	LastModified time.Time `json:"last_modified"`
-	IsDeleted    bool      `json:"is_deleted"`
+	ID           int64         `json:"id"`
+	FilePath     string        `json:"file_path"`
+	LastModified time.Time     `json:"last_modified"`
+	IsDeleted    bool          `json:"is_deleted"`
+	ScanFolderID sql.NullInt64 `json:"scan_folder_id"`
 }
 
 func (q *Queries) ListAssetsForCache(ctx context.Context) ([]ListAssetsForCacheRow, error) {
@@ -344,6 +364,7 @@ func (q *Queries) ListAssetsForCache(ctx context.Context) ([]ListAssetsForCacheR
 			&i.FilePath,
 			&i.LastModified,
 			&i.IsDeleted,
+			&i.ScanFolderID,
 		); err != nil {
 			return nil, err
 		}
@@ -531,6 +552,22 @@ func (q *Queries) ListUntaggedAssets(ctx context.Context, arg ListUntaggedAssets
 		return nil, err
 	}
 	return items, nil
+}
+
+const moveAssetsToFolder = `-- name: MoveAssetsToFolder :exec
+UPDATE assets
+SET scan_folder_id = ?
+WHERE scan_folder_id = ?
+`
+
+type MoveAssetsToFolderParams struct {
+	ScanFolderID   sql.NullInt64 `json:"scan_folder_id"`
+	ScanFolderID_2 sql.NullInt64 `json:"scan_folder_id_2"`
+}
+
+func (q *Queries) MoveAssetsToFolder(ctx context.Context, arg MoveAssetsToFolderParams) error {
+	_, err := q.exec(ctx, q.moveAssetsToFolderStmt, moveAssetsToFolder, arg.ScanFolderID, arg.ScanFolderID_2)
+	return err
 }
 
 const restoreAsset = `-- name: RestoreAsset :exec

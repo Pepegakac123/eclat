@@ -57,6 +57,7 @@ type CachedAsset struct {
 	ID           int64
 	LastModified time.Time
 	IsDeleted    bool
+	ScanFolderID sql.NullInt64
 }
 
 // StartScan starts the scanning process in the background
@@ -155,6 +156,19 @@ func (s *Scanner) scanDirectory(ctx context.Context, folder database.ScanFolder,
 		fileType := DetermineFileType(ext)
 		if cached, exists := existingCache[path]; exists {
 			foundAssets[cached.ID] = true
+
+			if cached.ScanFolderID.Int64 != folder.ID {
+				s.logger.Info("Asset ownership change detected", "path", path, "old_folder", cached.ScanFolderID, "new_folder", folder.ID)
+				err := s.db.UpdateAssetLocation(ctx, database.UpdateAssetLocationParams{
+					ID:           cached.ID,
+					FilePath:     path,
+					ScanFolderID: sql.NullInt64{Int64: folder.ID, Valid: true},
+					LastScanned:  time.Now(),
+				})
+				if err != nil {
+					s.logger.Error("Failed to re-bind asset", "error", err)
+				}
+			}
 			cachedTime := existingCache[path].LastModified
 			diskTime := info.ModTime()
 			if cached.IsDeleted {
@@ -290,6 +304,7 @@ func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsse
 			ID:           row.ID,
 			LastModified: row.LastModified,
 			IsDeleted:    row.IsDeleted,
+			ScanFolderID: row.ScanFolderID,
 		}
 	}
 	s.logger.Info("Loaded assets cache", "count", len(existing))

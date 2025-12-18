@@ -28,6 +28,24 @@ func (q *Queries) CreateScanFolder(ctx context.Context, path string) (ScanFolder
 	return i, err
 }
 
+const getScanFolderById = `-- name: GetScanFolderById :one
+SELECT id, path, is_active, last_scanned, date_added FROM scan_folders
+WHERE id = ? LIMIT 1
+`
+
+func (q *Queries) GetScanFolderById(ctx context.Context, id int64) (ScanFolder, error) {
+	row := q.queryRow(ctx, q.getScanFolderByIdStmt, getScanFolderById, id)
+	var i ScanFolder
+	err := row.Scan(
+		&i.ID,
+		&i.Path,
+		&i.IsActive,
+		&i.LastScanned,
+		&i.DateAdded,
+	)
+	return i, err
+}
+
 const getScanFolderByPath = `-- name: GetScanFolderByPath :one
 SELECT id, path, is_active, last_scanned, date_added FROM scan_folders
 WHERE path = ? LIMIT 1

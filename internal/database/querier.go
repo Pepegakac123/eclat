@@ -12,6 +12,8 @@ import (
 type Querier interface {
 	AddAssetToMaterialSet(ctx context.Context, arg AddAssetToMaterialSetParams) error
 	AddTagToAsset(ctx context.Context, arg AddTagToAssetParams) error
+	// Przypisz do nowego folderu wszystkie assety, które fizycznie w nim leżą, ale są przypisane do innego folderu (np. rodzica)
+	ClaimAssetsForPath(ctx context.Context, arg ClaimAssetsForPathParams) error
 	ClearTagsFromAsset(ctx context.Context, assetID int64) error
 	CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset, error)
 	CreateMaterialSet(ctx context.Context, arg CreateMaterialSetParams) (MaterialSet, error)
@@ -27,6 +29,7 @@ type Querier interface {
 	GetAssetByPath(ctx context.Context, filePath string) (Asset, error)
 	GetLibraryStats(ctx context.Context) (GetLibraryStatsRow, error)
 	GetMaterialSetById(ctx context.Context, id int64) (MaterialSet, error)
+	GetScanFolderById(ctx context.Context, id int64) (ScanFolder, error)
 	GetScanFolderByPath(ctx context.Context, path string) (ScanFolder, error)
 	GetSidebarStats(ctx context.Context) (GetSidebarStatsRow, error)
 	GetSystemSetting(ctx context.Context, key string) (string, error)
@@ -42,6 +45,7 @@ type Querier interface {
 	ListScanFolders(ctx context.Context) ([]ScanFolder, error)
 	ListTags(ctx context.Context) ([]ListTagsRow, error)
 	ListUntaggedAssets(ctx context.Context, arg ListUntaggedAssetsParams) ([]Asset, error)
+	MoveAssetsToFolder(ctx context.Context, arg MoveAssetsToFolderParams) error
 	RemoveAssetFromMaterialSet(ctx context.Context, arg RemoveAssetFromMaterialSetParams) error
 	RemoveTagFromAsset(ctx context.Context, arg RemoveTagFromAssetParams) error
 	RestoreAsset(ctx context.Context, id int64) error

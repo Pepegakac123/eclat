@@ -7,6 +7,11 @@ ORDER BY path ASC;
 SELECT * FROM scan_folders
 WHERE path = ? LIMIT 1;
 
+-- name: GetScanFolderById :one
+SELECT * FROM scan_folders
+WHERE id = ? LIMIT 1;
+
+
 -- name: CreateScanFolder :one
 INSERT INTO scan_folders (path, is_active, last_scanned)
 VALUES (?, 1, NULL)

@@ -30,6 +30,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.addTagToAssetStmt, err = db.PrepareContext(ctx, addTagToAsset); err != nil {
 		return nil, fmt.Errorf("error preparing query AddTagToAsset: %w", err)
 	}
+	if q.claimAssetsForPathStmt, err = db.PrepareContext(ctx, claimAssetsForPath); err != nil {
+		return nil, fmt.Errorf("error preparing query ClaimAssetsForPath: %w", err)
+	}
 	if q.clearTagsFromAssetStmt, err = db.PrepareContext(ctx, clearTagsFromAsset); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearTagsFromAsset: %w", err)
 	}
@@ -75,6 +78,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getMaterialSetByIdStmt, err = db.PrepareContext(ctx, getMaterialSetById); err != nil {
 		return nil, fmt.Errorf("error preparing query GetMaterialSetById: %w", err)
 	}
+	if q.getScanFolderByIdStmt, err = db.PrepareContext(ctx, getScanFolderById); err != nil {
+		return nil, fmt.Errorf("error preparing query GetScanFolderById: %w", err)
+	}
 	if q.getScanFolderByPathStmt, err = db.PrepareContext(ctx, getScanFolderByPath); err != nil {
 		return nil, fmt.Errorf("error preparing query GetScanFolderByPath: %w", err)
 	}
@@ -119,6 +125,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listUntaggedAssetsStmt, err = db.PrepareContext(ctx, listUntaggedAssets); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUntaggedAssets: %w", err)
+	}
+	if q.moveAssetsToFolderStmt, err = db.PrepareContext(ctx, moveAssetsToFolder); err != nil {
+		return nil, fmt.Errorf("error preparing query MoveAssetsToFolder: %w", err)
 	}
 	if q.removeAssetFromMaterialSetStmt, err = db.PrepareContext(ctx, removeAssetFromMaterialSet); err != nil {
 		return nil, fmt.Errorf("error preparing query RemoveAssetFromMaterialSet: %w", err)
@@ -178,6 +187,11 @@ func (q *Queries) Close() error {
 	if q.addTagToAssetStmt != nil {
 		if cerr := q.addTagToAssetStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing addTagToAssetStmt: %w", cerr)
+		}
+	}
+	if q.claimAssetsForPathStmt != nil {
+		if cerr := q.claimAssetsForPathStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing claimAssetsForPathStmt: %w", cerr)
 		}
 	}
 	if q.clearTagsFromAssetStmt != nil {
@@ -255,6 +269,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getMaterialSetByIdStmt: %w", cerr)
 		}
 	}
+	if q.getScanFolderByIdStmt != nil {
+		if cerr := q.getScanFolderByIdStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getScanFolderByIdStmt: %w", cerr)
+		}
+	}
 	if q.getScanFolderByPathStmt != nil {
 		if cerr := q.getScanFolderByPathStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getScanFolderByPathStmt: %w", cerr)
@@ -328,6 +347,11 @@ func (q *Queries) Close() error {
 	if q.listUntaggedAssetsStmt != nil {
 		if cerr := q.listUntaggedAssetsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listUntaggedAssetsStmt: %w", cerr)
+		}
+	}
+	if q.moveAssetsToFolderStmt != nil {
+		if cerr := q.moveAssetsToFolderStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing moveAssetsToFolderStmt: %w", cerr)
 		}
 	}
 	if q.removeAssetFromMaterialSetStmt != nil {
@@ -446,6 +470,7 @@ type Queries struct {
 	tx                              *sql.Tx
 	addAssetToMaterialSetStmt       *sql.Stmt
 	addTagToAssetStmt               *sql.Stmt
+	claimAssetsForPathStmt          *sql.Stmt
 	clearTagsFromAssetStmt          *sql.Stmt
 	createAssetStmt                 *sql.Stmt
 	createMaterialSetStmt           *sql.Stmt
@@ -461,6 +486,7 @@ type Queries struct {
 	getAssetByPathStmt              *sql.Stmt
 	getLibraryStatsStmt             *sql.Stmt
 	getMaterialSetByIdStmt          *sql.Stmt
+	getScanFolderByIdStmt           *sql.Stmt
 	getScanFolderByPathStmt         *sql.Stmt
 	getSidebarStatsStmt             *sql.Stmt
 	getSystemSettingStmt            *sql.Stmt
@@ -476,6 +502,7 @@ type Queries struct {
 	listScanFoldersStmt             *sql.Stmt
 	listTagsStmt                    *sql.Stmt
 	listUntaggedAssetsStmt          *sql.Stmt
+	moveAssetsToFolderStmt          *sql.Stmt
 	removeAssetFromMaterialSetStmt  *sql.Stmt
 	removeTagFromAssetStmt          *sql.Stmt
 	restoreAssetStmt                *sql.Stmt
@@ -499,6 +526,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		tx:                              tx,
 		addAssetToMaterialSetStmt:       q.addAssetToMaterialSetStmt,
 		addTagToAssetStmt:               q.addTagToAssetStmt,
+		claimAssetsForPathStmt:          q.claimAssetsForPathStmt,
 		clearTagsFromAssetStmt:          q.clearTagsFromAssetStmt,
 		createAssetStmt:                 q.createAssetStmt,
 		createMaterialSetStmt:           q.createMaterialSetStmt,
@@ -514,6 +542,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAssetByPathStmt:              q.getAssetByPathStmt,
 		getLibraryStatsStmt:             q.getLibraryStatsStmt,
 		getMaterialSetByIdStmt:          q.getMaterialSetByIdStmt,
+		getScanFolderByIdStmt:           q.getScanFolderByIdStmt,
 		getScanFolderByPathStmt:         q.getScanFolderByPathStmt,
 		getSidebarStatsStmt:             q.getSidebarStatsStmt,
 		getSystemSettingStmt:            q.getSystemSettingStmt,
@@ -529,6 +558,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listScanFoldersStmt:             q.listScanFoldersStmt,
 		listTagsStmt:                    q.listTagsStmt,
 		listUntaggedAssetsStmt:          q.listUntaggedAssetsStmt,
+		moveAssetsToFolderStmt:          q.moveAssetsToFolderStmt,
 		removeAssetFromMaterialSetStmt:  q.removeAssetFromMaterialSetStmt,
 		removeTagFromAssetStmt:          q.removeTagFromAssetStmt,
 		restoreAssetStmt:                q.restoreAssetStmt,
