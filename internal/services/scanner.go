@@ -31,6 +31,7 @@ TODO: GAP ANALYSIS - SCANNER IMPLEMENTATION
 type Scanner struct {
 	mu         sync.RWMutex
 	db         *database.Queries
+	conn       *sql.DB
 	logger     *slog.Logger
 	cancelFunc context.CancelFunc
 	config     *ScannerConfig
@@ -55,8 +56,9 @@ func (s *Scanner) Startup(ctx context.Context) {
 }
 
 // NewScanner creates a new Scanner instance
-func NewScanner(db *database.Queries, thumbGen *ThumbnailGenerator) *Scanner {
+func NewScanner(conn *sql.DB, db *database.Queries, thumbGen *ThumbnailGenerator) *Scanner {
 	return &Scanner{
+		conn:     conn,
 		db:       db,
 		logger:   slog.Default(),
 		config:   NewScannerConfig(),
@@ -204,6 +206,60 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 	}
 }
 
+func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-chan ScanResult) {
+	const batchSize = 100
+	const emitAfter = 50
+	buff := make([]ScanResult, 0, batchSize)
+
+	var totalProcessed int
+
+	flush := func() {
+		if len(buff) > 0 {
+			s.logger.Info("Flushing batch to DB", "count", len(buff))
+			err := s.InsertAssets(ctx, buff)
+			if err != nil {
+				s.logger.Error("Batch insert failed", "error", err)
+			}
+			buff = buff[:0]
+		}
+	}
+
+	for result := range results {
+		if result.Err != nil {
+			s.logger.Error("Error scanning file", "path", result.Path, "error", result.Err)
+		} else {
+			s.logger.Debug("File scanned", "path", result.Path)
+		}
+		if result.NewAsset != nil {
+			buff = append(buff, result)
+		}
+		if len(buff) >= batchSize {
+			flush()
+		}
+		s.updateAndEmitTotal(&totalProcessed, totalToProcess, emitAfter)
+	}
+	flush()
+}
+func (s *Scanner) InsertAssets(ctx context.Context, buffer []ScanResult) error {
+	tx, err := s.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	qtx := s.db.WithTx(tx)
+	for _, item := range buffer {
+		if item.NewAsset != nil {
+			_, err := qtx.CreateAsset(ctx, *item.NewAsset)
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+	}
+
+	return tx.Commit()
+}
+
 // Funkcja pomocnicza -
 func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string) (database.CreateAssetParams, error) {
 	thumb, err := s.thumbGen.Generate(ctx, path)
@@ -287,7 +343,7 @@ func (s *Scanner) scanDirectory(ctx context.Context, folder database.ScanFolder,
 				// s.logger.Info("File modified, updating...", "path", path)
 			}
 			// Update procesu skanowania
-			s.updateAndEmitTotal(total, d, totalToProcess)
+			s.updateAndEmitTotal(total, totalToProcess, 50)
 			//Tak to skip
 			return nil
 		}
@@ -364,7 +420,7 @@ func (s *Scanner) scanDirectory(ctx context.Context, folder database.ScanFolder,
 			// TODO: Handle UNIQUE constraint violation
 			s.logger.Debug("Skipping asset", "path", path, "reason", dbErr)
 		} else {
-			s.updateAndEmitTotal(total, d, totalToProcess)
+			s.updateAndEmitTotal(total, totalToProcess)
 		}
 
 		return nil
@@ -418,13 +474,12 @@ func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsse
 
 }
 
-func (s *Scanner) updateAndEmitTotal(total *int, d fs.DirEntry, totalToProcess int) {
+func (s *Scanner) updateAndEmitTotal(total *int, totalToProcess, emitAfter int) {
 	*total++
-	if *total%10 == 0 {
+	if *total%emitAfter == 0 {
 		runtime.EventsEmit(s.ctx, "scan_progress", map[string]any{
-			"current":  *total,
-			"total":    totalToProcess,
-			"lastFile": d.Name(),
+			"current": *total,
+			"total":   totalToProcess,
 		})
 	}
 }

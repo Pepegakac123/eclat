@@ -55,7 +55,7 @@ func main() {
 	}
 
 	thumbGen := services.NewThumbnailGenerator(appCachePath, slog.Default())
-	scannerService := services.NewScanner(queries, thumbGen)
+	scannerService := services.NewScanner(db, queries, thumbGen)
 	settingsService := services.NewSettingsService(queries)
 
 	// 4. APP SETUP
