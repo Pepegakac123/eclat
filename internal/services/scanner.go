@@ -38,6 +38,17 @@ type Scanner struct {
 	thumbGen   *ThumbnailGenerator
 	ctx        context.Context
 }
+type ScanJob struct {
+	Path     string
+	FolderId int64
+	Entry    fs.DirEntry
+}
+type ScanResult struct {
+	Path       string
+	Err        error
+	NewAsset   *database.CreateAssetParams
+	ExistingID int64
+}
 
 func (s *Scanner) Startup(ctx context.Context) {
 	s.ctx = ctx
@@ -131,6 +142,101 @@ func (s *Scanner) StopScan() {
 	if s.cancelFunc != nil {
 		s.cancelFunc() // Sends done() signal to goroutine
 	}
+}
+func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan ScanJob, results chan<- ScanResult) {
+	defer wg.Done()
+
+	for job := range jobs {
+		result := ScanResult{Path: job.Path}
+		path := job.Path
+		folderId := job.FolderId
+		entry := job.Entry
+
+		ext := filepath.Ext(path)
+		if isAllowed := s.IsExtensionAllowed(ext); !isAllowed {
+			s.logger.Debug("Extension not allowed", "path", path)
+			continue
+		}
+
+		fileType := DetermineFileType(ext)
+
+		hash, err := CalculateFileHash(path, s.config.MaxAllowHashFileSize)
+		if err != nil {
+			s.logger.Debug("Failed to calculate hash", "path", path, "error", err)
+			result.Err = err
+			results <- result
+			continue
+		}
+
+		var exist database.Asset
+		var lookupErr error
+
+		if hash != "" {
+			// Strategia A: Mamy hash, szukamy po hashu
+			exist, lookupErr = s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
+		} else {
+			// Strategia B: Brak hasha (duży plik), szukamy po ścieżce
+			exist, lookupErr = s.db.GetAssetByPath(ctx, path)
+		}
+
+		if lookupErr != nil && lookupErr != sql.ErrNoRows {
+			s.logger.Debug("DB Lookup failed", "path", path, "error", lookupErr)
+			result.Err = lookupErr
+			results <- result
+			continue
+		}
+		if exist.ID > 0 {
+			result.ExistingID = exist.ID
+		} else {
+			if lookupErr == sql.ErrNoRows {
+				s.logger.Debug("Asset not found (new file)", "path", path)
+			}
+			newAsset, err := s.generateAssetMetadata(ctx, path, entry, folderId, fileType, hash)
+			if err != nil {
+				s.logger.Debug("Failed to generate metadata", "path", path, "error", err)
+				result.Err = err
+			} else {
+				result.NewAsset = &newAsset
+			}
+		}
+
+		results <- result
+	}
+}
+
+// Funkcja pomocnicza -
+func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string) (database.CreateAssetParams, error) {
+	thumb, err := s.thumbGen.Generate(ctx, path)
+	if err != nil {
+		s.logger.Debug("Failed to generate thumbnail", "path", path, "error", err)
+		return database.CreateAssetParams{}, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		s.logger.Debug("Failed to get file info", "path", path, "error", err)
+		return database.CreateAssetParams{}, err
+	}
+
+	hasValidDimensions := thumb.Metadata.Width > 0 && thumb.Metadata.Height > 0
+
+	newAsset := database.CreateAssetParams{
+		ScanFolderID:    sql.NullInt64{Int64: folderId, Valid: true},
+		FileName:        entry.Name(),
+		FilePath:        path,
+		FileType:        filetype,
+		FileSize:        info.Size(),
+		ThumbnailPath:   thumb.WebPath,
+		FileHash:        sql.NullString{String: hash, Valid: hash != ""},
+		ImageWidth:      sql.NullInt64{Int64: int64(thumb.Metadata.Width), Valid: hasValidDimensions},
+		ImageHeight:     sql.NullInt64{Int64: int64(thumb.Metadata.Height), Valid: hasValidDimensions},
+		DominantColor:   sql.NullString{String: string(thumb.Metadata.DominantColor), Valid: thumb.Metadata.DominantColor != ""},
+		BitDepth:        sql.NullInt64{Int64: int64(thumb.Metadata.BitDepth), Valid: hasValidDimensions},
+		HasAlphaChannel: sql.NullBool{Bool: thumb.Metadata.HasAlphaChannel, Valid: hasValidDimensions},
+		LastModified:    info.ModTime(),
+		LastScanned:     time.Now(),
+	}
+
+	return newAsset, nil
 }
 
 // Helper function that scans a directory for files, Add them to db and updates the total count
