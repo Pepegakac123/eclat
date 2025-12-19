@@ -114,6 +114,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listFavoriteAssetsStmt, err = db.PrepareContext(ctx, listFavoriteAssets); err != nil {
 		return nil, fmt.Errorf("error preparing query ListFavoriteAssets: %w", err)
 	}
+	if q.listHiddenAssetsStmt, err = db.PrepareContext(ctx, listHiddenAssets); err != nil {
+		return nil, fmt.Errorf("error preparing query ListHiddenAssets: %w", err)
+	}
 	if q.listMaterialSetsStmt, err = db.PrepareContext(ctx, listMaterialSets); err != nil {
 		return nil, fmt.Errorf("error preparing query ListMaterialSets: %w", err)
 	}
@@ -143,6 +146,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.restoreScanFolderStmt, err = db.PrepareContext(ctx, restoreScanFolder); err != nil {
 		return nil, fmt.Errorf("error preparing query RestoreScanFolder: %w", err)
+	}
+	if q.setAssetHiddenStmt, err = db.PrepareContext(ctx, setAssetHidden); err != nil {
+		return nil, fmt.Errorf("error preparing query SetAssetHidden: %w", err)
 	}
 	if q.setAssetRatingStmt, err = db.PrepareContext(ctx, setAssetRating); err != nil {
 		return nil, fmt.Errorf("error preparing query SetAssetRating: %w", err)
@@ -332,6 +338,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listFavoriteAssetsStmt: %w", cerr)
 		}
 	}
+	if q.listHiddenAssetsStmt != nil {
+		if cerr := q.listHiddenAssetsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listHiddenAssetsStmt: %w", cerr)
+		}
+	}
 	if q.listMaterialSetsStmt != nil {
 		if cerr := q.listMaterialSetsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listMaterialSetsStmt: %w", cerr)
@@ -380,6 +391,11 @@ func (q *Queries) Close() error {
 	if q.restoreScanFolderStmt != nil {
 		if cerr := q.restoreScanFolderStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing restoreScanFolderStmt: %w", cerr)
+		}
+	}
+	if q.setAssetHiddenStmt != nil {
+		if cerr := q.setAssetHiddenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setAssetHiddenStmt: %w", cerr)
 		}
 	}
 	if q.setAssetRatingStmt != nil {
@@ -506,6 +522,7 @@ type Queries struct {
 	listAssetsInMaterialSetStmt     *sql.Stmt
 	listDeletedAssetsStmt           *sql.Stmt
 	listFavoriteAssetsStmt          *sql.Stmt
+	listHiddenAssetsStmt            *sql.Stmt
 	listMaterialSetsStmt            *sql.Stmt
 	listSavedSearchesStmt           *sql.Stmt
 	listScanFoldersStmt             *sql.Stmt
@@ -516,6 +533,7 @@ type Queries struct {
 	removeTagFromAssetStmt          *sql.Stmt
 	restoreAssetStmt                *sql.Stmt
 	restoreScanFolderStmt           *sql.Stmt
+	setAssetHiddenStmt              *sql.Stmt
 	setAssetRatingStmt              *sql.Stmt
 	setSystemSettingStmt            *sql.Stmt
 	softDeleteAssetStmt             *sql.Stmt
@@ -563,6 +581,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAssetsInMaterialSetStmt:     q.listAssetsInMaterialSetStmt,
 		listDeletedAssetsStmt:           q.listDeletedAssetsStmt,
 		listFavoriteAssetsStmt:          q.listFavoriteAssetsStmt,
+		listHiddenAssetsStmt:            q.listHiddenAssetsStmt,
 		listMaterialSetsStmt:            q.listMaterialSetsStmt,
 		listSavedSearchesStmt:           q.listSavedSearchesStmt,
 		listScanFoldersStmt:             q.listScanFoldersStmt,
@@ -573,6 +592,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		removeTagFromAssetStmt:          q.removeTagFromAssetStmt,
 		restoreAssetStmt:                q.restoreAssetStmt,
 		restoreScanFolderStmt:           q.restoreScanFolderStmt,
+		setAssetHiddenStmt:              q.setAssetHiddenStmt,
 		setAssetRatingStmt:              q.setAssetRatingStmt,
 		setSystemSettingStmt:            q.setSystemSettingStmt,
 		softDeleteAssetStmt:             q.softDeleteAssetStmt,

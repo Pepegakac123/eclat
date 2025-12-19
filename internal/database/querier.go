@@ -40,6 +40,7 @@ type Querier interface {
 	ListAssetsInMaterialSet(ctx context.Context, arg ListAssetsInMaterialSetParams) ([]Asset, error)
 	ListDeletedAssets(ctx context.Context, arg ListDeletedAssetsParams) ([]Asset, error)
 	ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssetsParams) ([]Asset, error)
+	ListHiddenAssets(ctx context.Context, arg ListHiddenAssetsParams) ([]Asset, error)
 	ListMaterialSets(ctx context.Context) ([]ListMaterialSetsRow, error)
 	ListSavedSearches(ctx context.Context) ([]SavedSearch, error)
 	ListScanFolders(ctx context.Context) ([]ScanFolder, error)
@@ -50,6 +51,7 @@ type Querier interface {
 	RemoveTagFromAsset(ctx context.Context, arg RemoveTagFromAssetParams) error
 	RestoreAsset(ctx context.Context, id int64) error
 	RestoreScanFolder(ctx context.Context, id int64) error
+	SetAssetHidden(ctx context.Context, arg SetAssetHiddenParams) error
 	SetAssetRating(ctx context.Context, arg SetAssetRatingParams) error
 	SetSystemSetting(ctx context.Context, arg SetSystemSettingParams) error
 	SoftDeleteAsset(ctx context.Context, id int64) error

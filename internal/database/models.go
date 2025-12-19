@@ -32,6 +32,7 @@ type Asset struct {
 	FileHash        sql.NullString `json:"fileHash"`
 	IsDeleted       bool           `json:"isDeleted"`
 	DeletedAt       sql.NullTime   `json:"deletedAt"`
+	IsHidden        bool           `json:"isHidden"`
 }
 
 type AssetMaterialSet struct {

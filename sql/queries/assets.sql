@@ -38,8 +38,12 @@ JOIN scan_folders f ON a.scan_folder_id = f.id
 WHERE a.is_deleted = 0
   AND f.is_deleted = 0
   AND f.is_active = 1
+  AND is_hidden = 0
 ORDER BY a.date_added DESC
 LIMIT ? OFFSET ?;
+
+-- name: SetAssetHidden :exec
+UPDATE assets SET is_hidden = ? WHERE id = ?;
 
 -- name: ListFavoriteAssets :many
 SELECT a.* FROM assets a
@@ -48,13 +52,20 @@ WHERE a.is_favorite = 1
   AND a.is_deleted = 0
   AND f.is_deleted = 0
   AND f.is_active = 1
+  AND is_hidden = 0
 ORDER BY a.date_added DESC
 LIMIT ? OFFSET ?;
 
 
 -- name: ListDeletedAssets :many
 SELECT * FROM assets
-WHERE is_deleted = 1
+WHERE is_deleted = 1 AND is_hidden = 0
+ORDER BY deleted_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: ListHiddenAssets :many
+SELECT * FROM assets
+WHERE is_hidden = 1 AND is_deleted = 0
 ORDER BY deleted_at DESC
 LIMIT ? OFFSET ?;
 
@@ -66,6 +77,7 @@ WHERE at.tag_id IS NULL
   AND a.is_deleted = 0
   AND f.is_deleted = 0
   AND f.is_active = 1
+  AND is_hidden = 0
 GROUP BY a.id
 LIMIT ? OFFSET ?;
 
@@ -111,7 +123,7 @@ SELECT
     MAX(last_scanned) as last_scan
 FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
-WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1;
+WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND is_hidden = 0;
 
 -- name: GetSidebarStats :one
 SELECT
@@ -123,7 +135,8 @@ SELECT
      JOIN scan_folders f ON a.scan_folder_id = f.id
      WHERE a.is_favorite = 1 AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as favorites_count,
 
-    (SELECT COUNT(*) FROM assets WHERE is_deleted = 1) as trash_count,
+    (SELECT COUNT(*) FROM assets WHERE is_deleted = 1 AND is_hidden = 0) as trash_count,
+    (SELECT COUNT(*) FROM assets WHERE is_hidden = 1 AND is_deleted = 0) as hidden_count,
 
     (SELECT COUNT(DISTINCT a.id)
      FROM assets a
@@ -138,6 +151,7 @@ JOIN scan_folders f ON a.scan_folder_id = f.id
 WHERE a.is_deleted = 0
   AND f.is_deleted = 0
   AND f.is_active = 1
+  AND is_hidden = 0
   AND dominant_color IS NOT NULL AND dominant_color != '';
 
 -- name: MoveAssetsToFolder :exec

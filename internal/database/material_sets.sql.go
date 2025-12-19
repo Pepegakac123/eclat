@@ -92,7 +92,7 @@ func (q *Queries) GetMaterialSetById(ctx context.Context, id int64) (MaterialSet
 }
 
 const listAssetsInMaterialSet = `-- name: ListAssetsInMaterialSet :many
-SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at FROM assets a
+SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at, a.is_hidden FROM assets a
 JOIN asset_material_sets ams ON a.id = ams.asset_id
 WHERE ams.material_set_id = ? AND a.is_deleted = 0
 ORDER BY a.date_added DESC
@@ -137,6 +137,7 @@ func (q *Queries) ListAssetsInMaterialSet(ctx context.Context, arg ListAssetsInM
 			&i.FileHash,
 			&i.IsDeleted,
 			&i.DeletedAt,
+			&i.IsHidden,
 		); err != nil {
 			return nil, err
 		}

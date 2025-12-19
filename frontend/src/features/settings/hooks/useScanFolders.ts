@@ -22,19 +22,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 export const useScanFolders = () => {
   const queryClient = useQueryClient();
 
-  // =========================================================
-  // --- REAL BACKEND: FOLDERS (DATABASE) ---
-  // =========================================================
-
-  // 1. Pobieranie listy folderów
   const foldersQuery = useQuery({
     queryKey: ["scan-folders"],
     queryFn: GetFolders,
-    // Opcjonalnie: odświeżaj co jakiś czas lub przy focusie okna
     refetchOnWindowFocus: true,
   });
 
-  // 2. Dodawanie folderu
   const addFolderMutation = useMutation({
     mutationFn: AddFolder,
     onSuccess: () => {
@@ -43,14 +36,6 @@ export const useScanFolders = () => {
         title: "Success",
         description: "Folder added to library",
         color: "success",
-      });
-    },
-    onError: (err: any) => {
-      addToast({
-        title: "Error",
-        description:
-          err instanceof Error ? err.message : "Failed to add folder",
-        color: "danger",
       });
     },
   });
@@ -66,18 +51,8 @@ export const useScanFolders = () => {
         color: "default",
       });
     },
-    onError: (err: any) => {
-      addToast({
-        title: "Error",
-        description: "Could not delete folder",
-        color: "danger",
-      });
-    },
   });
 
-  // 4. Zmiana statusu (Active/Inactive)
-  // Wails generuje funkcję przyjmującą osobne argumenty, a useMutation przyjmuje jeden obiekt.
-  // Musimy to owinąć.
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
       return await UpdateFolderStatus(id, isActive);
@@ -85,18 +60,7 @@ export const useScanFolders = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scan-folders"] });
     },
-    onError: (err: any) => {
-      addToast({
-        title: "Error",
-        description: "Could not update status",
-        color: "danger",
-      });
-    },
   });
-
-  // =========================================================
-  // --- REAL BACKEND: HELPER METHODS ---
-  // =========================================================
 
   // Wrapper na ValidatePath (konwersja bool -> object dla UI)
   const validatePathWrapper = async (path: string) => {
@@ -124,10 +88,6 @@ export const useScanFolders = () => {
       });
     }
   };
-
-  // =========================================================
-  // --- REAL BACKEND: SCANNER & CONFIG ---
-  // =========================================================
 
   const startScanMutation = useMutation({
     mutationFn: StartScan,

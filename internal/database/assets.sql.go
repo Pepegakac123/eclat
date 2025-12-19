@@ -38,7 +38,7 @@ INSERT INTO assets (
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
-RETURNING id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at
+RETURNING id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden
 `
 
 type CreateAssetParams struct {
@@ -99,6 +99,7 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset
 		&i.FileHash,
 		&i.IsDeleted,
 		&i.DeletedAt,
+		&i.IsHidden,
 	)
 	return i, err
 }
@@ -128,6 +129,7 @@ JOIN scan_folders f ON a.scan_folder_id = f.id
 WHERE a.is_deleted = 0
   AND f.is_deleted = 0
   AND f.is_active = 1
+  AND is_hidden = 0
   AND dominant_color IS NOT NULL AND dominant_color != ''
 `
 
@@ -155,7 +157,7 @@ func (q *Queries) GetAllColors(ctx context.Context) ([]sql.NullString, error) {
 }
 
 const getAssetByHash = `-- name: GetAssetByHash :one
-SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at FROM assets
+SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden FROM assets
 WHERE file_hash = ? AND file_hash IS NOT NULL
 LIMIT 1
 `
@@ -186,12 +188,13 @@ func (q *Queries) GetAssetByHash(ctx context.Context, fileHash sql.NullString) (
 		&i.FileHash,
 		&i.IsDeleted,
 		&i.DeletedAt,
+		&i.IsHidden,
 	)
 	return i, err
 }
 
 const getAssetById = `-- name: GetAssetById :one
-SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at FROM assets
+SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden FROM assets
 WHERE id = ? LIMIT 1
 `
 
@@ -221,12 +224,13 @@ func (q *Queries) GetAssetById(ctx context.Context, id int64) (Asset, error) {
 		&i.FileHash,
 		&i.IsDeleted,
 		&i.DeletedAt,
+		&i.IsHidden,
 	)
 	return i, err
 }
 
 const getAssetByPath = `-- name: GetAssetByPath :one
-SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at FROM assets
+SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden FROM assets
 WHERE file_path = ? LIMIT 1
 `
 
@@ -256,6 +260,7 @@ func (q *Queries) GetAssetByPath(ctx context.Context, filePath string) (Asset, e
 		&i.FileHash,
 		&i.IsDeleted,
 		&i.DeletedAt,
+		&i.IsHidden,
 	)
 	return i, err
 }
@@ -267,7 +272,7 @@ SELECT
     MAX(last_scanned) as last_scan
 FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
-WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1
+WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND is_hidden = 0
 `
 
 type GetLibraryStatsRow struct {
@@ -293,7 +298,8 @@ SELECT
      JOIN scan_folders f ON a.scan_folder_id = f.id
      WHERE a.is_favorite = 1 AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as favorites_count,
 
-    (SELECT COUNT(*) FROM assets WHERE is_deleted = 1) as trash_count,
+    (SELECT COUNT(*) FROM assets WHERE is_deleted = 1 AND is_hidden = 0) as trash_count,
+    (SELECT COUNT(*) FROM assets WHERE is_hidden = 1 AND is_deleted = 0) as hidden_count,
 
     (SELECT COUNT(DISTINCT a.id)
      FROM assets a
@@ -306,6 +312,7 @@ type GetSidebarStatsRow struct {
 	AllCount           int64 `json:"allCount"`
 	FavoritesCount     int64 `json:"favoritesCount"`
 	TrashCount         int64 `json:"trashCount"`
+	HiddenCount        int64 `json:"hiddenCount"`
 	UncategorizedCount int64 `json:"uncategorizedCount"`
 }
 
@@ -316,17 +323,19 @@ func (q *Queries) GetSidebarStats(ctx context.Context) (GetSidebarStatsRow, erro
 		&i.AllCount,
 		&i.FavoritesCount,
 		&i.TrashCount,
+		&i.HiddenCount,
 		&i.UncategorizedCount,
 	)
 	return i, err
 }
 
 const listAssets = `-- name: ListAssets :many
-SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at FROM assets a
+SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at, a.is_hidden FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
 WHERE a.is_deleted = 0
   AND f.is_deleted = 0
   AND f.is_active = 1
+  AND is_hidden = 0
 ORDER BY a.date_added DESC
 LIMIT ? OFFSET ?
 `
@@ -368,6 +377,7 @@ func (q *Queries) ListAssets(ctx context.Context, arg ListAssetsParams) ([]Asset
 			&i.FileHash,
 			&i.IsDeleted,
 			&i.DeletedAt,
+			&i.IsHidden,
 		); err != nil {
 			return nil, err
 		}
@@ -424,8 +434,8 @@ func (q *Queries) ListAssetsForCache(ctx context.Context) ([]ListAssetsForCacheR
 }
 
 const listDeletedAssets = `-- name: ListDeletedAssets :many
-SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at FROM assets
-WHERE is_deleted = 1
+SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden FROM assets
+WHERE is_deleted = 1 AND is_hidden = 0
 ORDER BY deleted_at DESC
 LIMIT ? OFFSET ?
 `
@@ -467,6 +477,7 @@ func (q *Queries) ListDeletedAssets(ctx context.Context, arg ListDeletedAssetsPa
 			&i.FileHash,
 			&i.IsDeleted,
 			&i.DeletedAt,
+			&i.IsHidden,
 		); err != nil {
 			return nil, err
 		}
@@ -482,12 +493,13 @@ func (q *Queries) ListDeletedAssets(ctx context.Context, arg ListDeletedAssetsPa
 }
 
 const listFavoriteAssets = `-- name: ListFavoriteAssets :many
-SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at FROM assets a
+SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at, a.is_hidden FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
 WHERE a.is_favorite = 1
   AND a.is_deleted = 0
   AND f.is_deleted = 0
   AND f.is_active = 1
+  AND is_hidden = 0
 ORDER BY a.date_added DESC
 LIMIT ? OFFSET ?
 `
@@ -529,6 +541,66 @@ func (q *Queries) ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssets
 			&i.FileHash,
 			&i.IsDeleted,
 			&i.DeletedAt,
+			&i.IsHidden,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHiddenAssets = `-- name: ListHiddenAssets :many
+SELECT id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden FROM assets
+WHERE is_hidden = 1 AND is_deleted = 0
+ORDER BY deleted_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListHiddenAssetsParams struct {
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
+}
+
+func (q *Queries) ListHiddenAssets(ctx context.Context, arg ListHiddenAssetsParams) ([]Asset, error) {
+	rows, err := q.query(ctx, q.listHiddenAssetsStmt, listHiddenAssets, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Asset
+	for rows.Next() {
+		var i Asset
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScanFolderID,
+			&i.ParentAssetID,
+			&i.FileName,
+			&i.FilePath,
+			&i.FileType,
+			&i.FileSize,
+			&i.ThumbnailPath,
+			&i.Rating,
+			&i.Description,
+			&i.IsFavorite,
+			&i.ImageWidth,
+			&i.ImageHeight,
+			&i.DominantColor,
+			&i.BitDepth,
+			&i.HasAlphaChannel,
+			&i.DateAdded,
+			&i.LastScanned,
+			&i.LastModified,
+			&i.FileHash,
+			&i.IsDeleted,
+			&i.DeletedAt,
+			&i.IsHidden,
 		); err != nil {
 			return nil, err
 		}
@@ -544,13 +616,14 @@ func (q *Queries) ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssets
 }
 
 const listUntaggedAssets = `-- name: ListUntaggedAssets :many
-SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at FROM assets a
+SELECT a.id, a.scan_folder_id, a.parent_asset_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at, a.is_hidden FROM assets a
 LEFT JOIN asset_tags at ON a.id = at.asset_id
 JOIN scan_folders f ON a.scan_folder_id = f.id -- DODANO JOIN
 WHERE at.tag_id IS NULL
   AND a.is_deleted = 0
   AND f.is_deleted = 0
   AND f.is_active = 1
+  AND is_hidden = 0
 GROUP BY a.id
 LIMIT ? OFFSET ?
 `
@@ -592,6 +665,7 @@ func (q *Queries) ListUntaggedAssets(ctx context.Context, arg ListUntaggedAssets
 			&i.FileHash,
 			&i.IsDeleted,
 			&i.DeletedAt,
+			&i.IsHidden,
 		); err != nil {
 			return nil, err
 		}
@@ -628,6 +702,20 @@ WHERE id = ?
 
 func (q *Queries) RestoreAsset(ctx context.Context, id int64) error {
 	_, err := q.exec(ctx, q.restoreAssetStmt, restoreAsset, id)
+	return err
+}
+
+const setAssetHidden = `-- name: SetAssetHidden :exec
+UPDATE assets SET is_hidden = ? WHERE id = ?
+`
+
+type SetAssetHiddenParams struct {
+	IsHidden bool  `json:"isHidden"`
+	ID       int64 `json:"id"`
+}
+
+func (q *Queries) SetAssetHidden(ctx context.Context, arg SetAssetHiddenParams) error {
+	_, err := q.exec(ctx, q.setAssetHiddenStmt, setAssetHidden, arg.IsHidden, arg.ID)
 	return err
 }
 
@@ -696,7 +784,7 @@ SET
     is_favorite = COALESCE(?4, is_favorite),
     thumbnail_path = COALESCE(?5, thumbnail_path)
 WHERE id = ?
-RETURNING id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at
+RETURNING id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden
 `
 
 type UpdateAssetMetadataParams struct {
@@ -739,6 +827,7 @@ func (q *Queries) UpdateAssetMetadata(ctx context.Context, arg UpdateAssetMetada
 		&i.FileHash,
 		&i.IsDeleted,
 		&i.DeletedAt,
+		&i.IsHidden,
 	)
 	return i, err
 }
