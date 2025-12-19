@@ -253,3 +253,16 @@ func (s *SettingsService) OpenFile(path string) error {
 
 	return cmd.Start()
 }
+
+// OpenFolderPicker otwiera systemowe okno, które widzi TYLKO foldery
+func (s *SettingsService) OpenFolderPicker() (string, error) {
+	selection, err := wailsRuntime.OpenDirectoryDialog(s.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "Select Library Folder",
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return selection, nil
+}

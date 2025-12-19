@@ -11,6 +11,8 @@ export function GetFolders():Promise<Array<services.ScanFolderDTO>>;
 
 export function OpenFile(arg1:string):Promise<void>;
 
+export function OpenFolderPicker():Promise<string>;
+
 export function OpenInExplorer(arg1:string):Promise<void>;
 
 export function Startup(arg1:context.Context):Promise<void>;

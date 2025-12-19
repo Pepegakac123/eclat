@@ -18,6 +18,10 @@ export function OpenFile(arg1) {
   return window['go']['services']['SettingsService']['OpenFile'](arg1);
 }
 
+export function OpenFolderPicker() {
+  return window['go']['services']['SettingsService']['OpenFolderPicker']();
+}
+
 export function OpenInExplorer(arg1) {
   return window['go']['services']['SettingsService']['OpenInExplorer'](arg1);
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
@@ -18,11 +18,12 @@ import {
   AlertCircle,
   CheckCircle2,
   FolderOpen,
+  FolderSearch,
 } from "lucide-react";
 import { useScanFolders } from "./hooks/useScanFolders";
 import { useScanProgress } from "./hooks/useScanProgress";
 import { addToast } from "@heroui/toast";
-import { EventsOn } from "@wailsjs/runtime/runtime";
+import { EventsOn, OnFileDrop } from "@wailsjs/runtime/runtime";
 
 export default function SettingsPage() {
   const {
@@ -31,6 +32,7 @@ export default function SettingsPage() {
     addFolder,
     deleteFolder,
     validatePath,
+    openFolderPicker,
     isValidating,
     updateFolderStatus,
     startScan,
@@ -62,20 +64,46 @@ export default function SettingsPage() {
     return () => stopToast();
   }, []);
 
-  const handleValidate = async () => {
-    if (!pathInput.trim()) {
-      setValidationState("idle");
-      return;
-    }
+  const handleValidate = useCallback(
+    async (pathToCheck?: string) => {
+      const path = pathToCheck || pathInput;
+      if (!path.trim()) {
+        setValidationState("idle");
+        return;
+      }
 
-    try {
-      const result = await validatePath(pathInput);
-      setValidationState(result.isValid ? "valid" : "invalid");
-    } catch (error) {
-      setValidationState("invalid");
+      try {
+        const result = await validatePath(path);
+        setValidationState(result.isValid ? "valid" : "invalid");
+      } catch (error) {
+        setValidationState("invalid");
+      }
+    },
+    [pathInput, validatePath],
+  );
+  useEffect(() => {
+    const handleFileDrop = (x: number, y: number, paths: string[]) => {
+      if (paths.length > 0) {
+        const droppedPath = paths[0];
+        setPathInput(droppedPath);
+        handleValidate(droppedPath);
+      }
+    };
+    OnFileDrop(handleFileDrop, true);
+    return () => {
+      OnFileDrop((x, y, paths) => {}, true);
+    };
+  }, [handleValidate]);
+  // Handler kliknięcia
+  const handleBrowse = async () => {
+    const selectedPath = await openFolderPicker();
+    if (selectedPath) {
+      setPathInput(selectedPath);
+
+      const validation = await validatePath(selectedPath);
+      setValidationState(validation.isValid ? "valid" : "invalid");
     }
   };
-
   const handleAddFolder = async () => {
     if (validationState === "valid") {
       setBackendError("");
@@ -204,11 +232,12 @@ export default function SettingsPage() {
           </p>
         </CardHeader>
         <CardBody className="px-6 py-6">
-          <div className="flex gap-2 items-top">
+          <div className="flex gap-2 items-stretch">
             <Input
+              label="Path"
               value={pathInput}
               onChange={(e) => setPathInput(e.target.value)}
-              placeholder="Paste absolute path (e.g. D:\Assets\SciFi)"
+              placeholder="Paste path or browse... (e.g. D:\Assets\SciFi)"
               startContent={
                 <FolderPlus className="text-default-400" size={20} />
               }
@@ -223,11 +252,25 @@ export default function SettingsPage() {
               className="flex-1"
               size="lg"
               variant="bordered"
-              endContent={getEndContent()}
-              onBlur={handleValidate}
+              onBlur={() => handleValidate()}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleValidate();
               }}
+              endContent={
+                <div className="flex items-center gap-2">
+                  {getEndContent()}
+                  <div className="h-6 w-px bg-default-300 mx-1" />{" "}
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="light"
+                    onPress={handleBrowse}
+                    title="Browse Folders"
+                  >
+                    <FolderSearch size={18} className="text-default-500" />
+                  </Button>
+                </div>
+              }
             />
             <Button
               size="lg"

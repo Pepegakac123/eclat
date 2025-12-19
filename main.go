@@ -68,6 +68,14 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
+		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true},
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "e7b8a9-eclat",
+			OnSecondInstanceLaunch: func(secondInstanceData options.SecondInstanceData) {
+				myApp.RestoreWindow()
+			},
+		},
+
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 
 		OnStartup: myApp.OnStartup,

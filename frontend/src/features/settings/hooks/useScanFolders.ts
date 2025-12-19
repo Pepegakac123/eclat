@@ -5,6 +5,7 @@ import {
   UpdateFolderStatus,
   ValidatePath,
   OpenInExplorer,
+  OpenFolderPicker,
 } from "@wailsjs/go/services/SettingsService";
 
 import {
@@ -160,6 +161,15 @@ export const useScanFolders = () => {
     queryFn: GetPredefinedPalette,
     staleTime: Infinity,
   });
+  const handleOpenPicker = async () => {
+    try {
+      const path = await OpenFolderPicker();
+      return path;
+    } catch (e) {
+      console.error("Picker error:", e);
+      return "";
+    }
+  };
 
   return {
     // --- Folders ---
@@ -172,6 +182,7 @@ export const useScanFolders = () => {
     // --- Helpers ---
     validatePath: validatePathWrapper,
     openInExplorer: openInExplorerWrapper,
+    openFolderPicker: handleOpenPicker,
     isValidating: false,
 
     // --- Scanner & Config ---
