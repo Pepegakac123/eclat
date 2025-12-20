@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	goRuntime "runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,10 +46,10 @@ type ScanJob struct {
 	Entry    fs.DirEntry
 }
 type ScanResult struct {
-	Path       string
-	Err        error
-	NewAsset   *database.CreateAssetParams
-	ExistingID int64
+	Path         string
+	Err          error
+	NewAsset     *database.CreateAssetParams
+	ExistingPath string
 }
 
 func (s *Scanner) Startup(ctx context.Context) {
@@ -71,32 +72,110 @@ type CachedAsset struct {
 	LastModified time.Time
 	IsDeleted    bool
 	ScanFolderID sql.NullInt64
+	FilePath     string
 }
 
 // StartScan starts the scanning process in the background
+// func (s *Scanner) StartScan() error {
+// 	if s.isScanning.Load() {
+// 		return nil
+// 	}
+// 	// kontekst do anulowania samej pracy (background work)
+// 	scanCtx, cancel := context.WithCancel(context.Background())
+// 	s.cancelFunc = cancel
+// 	s.isScanning.Store(true)
+
+// 	go func() {
+// 		defer s.isScanning.Store(false)
+// 		defer cancel()
+
+// 		s.logger.Info("Scanner Started")
+
+// 		// Get active folders
+// 		folders, err := s.db.ListScanFolders(scanCtx)
+// 		if err != nil {
+// 			s.logger.Error("Failed to list folders", slog.String("error", err.Error()))
+// 		}
+
+// 		s.logger.Info("Calculating total files...")
+// 		totalToProcess := 0
+// 		for _, f := range folders {
+// 			if scanCtx.Err() != nil {
+// 				s.logger.Info("Scanner cancelled by user")
+// 				break
+// 			}
+// 			totalToProcess += s.getAllFilesCount(f)
+// 		}
+// 		s.logger.Info("Total files to scan calculated", "count", totalToProcess)
+
+// 		existingAssets, err := s.loadExistingAssets(scanCtx)
+// 		if err != nil {
+// 			s.logger.Error("Failed to load asset cache", "error", err)
+// 			return
+// 		}
+// 		foundAssets := make(map[int64]bool)
+
+// 		totalProcessed := 0
+// 		runtime.EventsEmit(s.ctx, "scan_status", "scanning") // Needed for UI Scanner Status Update
+// 		for _, f := range folders {
+// 			// Check for the cancellation
+// 			if scanCtx.Err() != nil {
+// 				s.logger.Info("Scanner cancelled by user")
+// 				break
+// 			}
+// 			s.scanDirectory(scanCtx, f, &totalProcessed, totalToProcess, existingAssets, foundAssets)
+// 		}
+// 		s.logger.Info("Scanner finished", "total", totalProcessed)
+// 		runtime.EventsEmit(s.ctx, "scan_status", "idle")
+// 		s.logger.Info("Starting Cleanup Phase (Soft Delete)...")
+// 		for path, cached := range existingAssets {
+// 			if !foundAssets[cached.ID] {
+// 				if !cached.IsDeleted {
+// 					s.logger.Info("Asset missing or invalid extension - Soft Deleting", "path", path)
+// 					s.db.SoftDeleteAsset(scanCtx, cached.ID)
+// 				}
+// 			}
+// 		}
+// 	}()
+// 	return nil
+
+// }
 func (s *Scanner) StartScan() error {
 	if s.isScanning.Load() {
 		return nil
 	}
-	// kontekst do anulowania samej pracy (background work)
+	s.isScanning.Store(true)
 	scanCtx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
-	s.isScanning.Store(true)
+	s.ctx = scanCtx
+	jobs := make(chan ScanJob, 100)
+	results := make(chan ScanResult, 100)
+
+	var workersWg sync.WaitGroup
+	numWorkers := goRuntime.NumCPU()
+	s.logger.Info("Starting scanner", "workers", numWorkers)
 
 	go func() {
 		defer s.isScanning.Store(false)
 		defer cancel()
+		var folders []database.ScanFolder
+		var totalToProcess int = 0
+		var err error
+		var foundOnDisk map[string]bool
+		collectorDone := make(chan map[string]bool)
 
-		s.logger.Info("Scanner Started")
-
-		// Get active folders
-		folders, err := s.db.ListScanFolders(scanCtx)
+		existingAssets, err := s.loadExistingAssets(scanCtx)
 		if err != nil {
-			s.logger.Error("Failed to list folders", slog.String("error", err.Error()))
+			s.logger.Error("Failed to load existing assets. Aborting.", "error", err)
+			return
 		}
 
+		folders, err = s.db.ListScanFolders(scanCtx)
+		if err != nil {
+			s.logger.Error("Failed to list folders", slog.String("error", err.Error()))
+			return
+		}
 		s.logger.Info("Calculating total files...")
-		totalToProcess := 0
 		for _, f := range folders {
 			if scanCtx.Err() != nil {
 				s.logger.Info("Scanner cancelled by user")
@@ -105,38 +184,45 @@ func (s *Scanner) StartScan() error {
 			totalToProcess += s.getAllFilesCount(f)
 		}
 		s.logger.Info("Total files to scan calculated", "count", totalToProcess)
-
-		existingAssets, err := s.loadExistingAssets(scanCtx)
-		if err != nil {
-			s.logger.Error("Failed to load asset cache", "error", err)
-			return
+		go func() {
+			defer close(collectorDone)
+			foundOnDisk = s.Collector(scanCtx, totalToProcess, results)
+			collectorDone <- foundOnDisk
+		}()
+		for i := 0; i < numWorkers; i++ {
+			workersWg.Add(1)
+			go s.Worker(scanCtx, &workersWg, jobs, results)
 		}
-		foundAssets := make(map[int64]bool)
-
-		totalProcessed := 0
-		runtime.EventsEmit(s.ctx, "scan_status", "scanning") // Needed for UI Scanner Status Update
+		// TODO:Implementacja pętli po folderach i WalkDir
 		for _, f := range folders {
-			// Check for the cancellation
 			if scanCtx.Err() != nil {
-				s.logger.Info("Scanner cancelled by user")
 				break
 			}
-			s.scanDirectory(scanCtx, f, &totalProcessed, totalToProcess, existingAssets, foundAssets)
+			err := s.scanDirectory(scanCtx, f, jobs)
+			if err != nil {
+				s.logger.Error("Failed to scan directory", slog.String("error", err.Error()))
+			}
 		}
-		s.logger.Info("Scanner finished", "total", totalProcessed)
+		close(jobs)
+		workersWg.Wait()
+		close(results)
+		foundOnDisk = <-collectorDone
+		s.logger.Info("Scanner finished", "total", totalToProcess)
 		runtime.EventsEmit(s.ctx, "scan_status", "idle")
-		s.logger.Info("Starting Cleanup Phase (Soft Delete)...")
+		s.logger.Info("Scan finished. Starting Cleanup phase...",
+			"db_cache_size", len(existingAssets),
+			"found_on_disk", len(foundOnDisk))
 		for path, cached := range existingAssets {
-			if !foundAssets[cached.ID] {
+			if !foundOnDisk[cached.FilePath] {
 				if !cached.IsDeleted {
 					s.logger.Info("Asset missing or invalid extension - Soft Deleting", "path", path)
 					s.db.SoftDeleteAsset(scanCtx, cached.ID)
 				}
 			}
 		}
+
 	}()
 	return nil
-
 }
 
 // StopScan cancells active project
@@ -188,7 +274,27 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 			continue
 		}
 		if exist.ID > 0 {
-			result.ExistingID = exist.ID
+			if exist.ID > 0 {
+						// Asset znaleziony w bazie.
+
+            // TODO: LOGIKA SELF-HEALING (MOVE vs COPY)
+            // 1. Sprawdź czy ścieżki są różne (exist.FilePath != path)
+            // 2. Jeśli są różne:
+            //    a) Sprawdź os.Stat(exist.FilePath) - czy stary plik istnieje?
+            //    b) Jeśli NIE istnieje (to jest Przeniesienie/Zmiana nazwy):
+            //       - s.db.UpdateAssetLocation(...) -> Uaktualnij rekord w bazie na 'path'.
+            //       - result.ExistingPath = exist.FilePath -> To trick! Wysyłamy STARĄ ścieżkę,
+            //         żeby Collector oznaczył ją w mapie 'processed' i uchronił ID przed usunięciem w Cleanupie.
+            //         (Bo w bazie ID jest już bezpieczne pod nową ścieżką, ale snapshot w Cleanupie pamięta starą).
+            //    c) Jeśli istnieje (to jest Duplikat/Kopia):
+            //       - Ignorujemy 'exist'. Tworzymy 'NewAsset' (zduplikowany hash, inna ścieżka).
+            //       - result.NewAsset = &newAsset
+
+            // Jeśli ścieżki są te same:
+            if result.ExistingPath == "" && result.NewAsset == nil {
+						    result.ExistingPath = exist.FilePath
+            }
+			result.ExistingPath = exist.FilePath
 		} else {
 			if lookupErr == sql.ErrNoRows {
 				s.logger.Debug("Asset not found (new file)", "path", path)
@@ -206,10 +312,11 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 	}
 }
 
-func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-chan ScanResult) {
+func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-chan ScanResult) map[string]bool {
 	const batchSize = 100
 	const emitAfter = 50
 	buff := make([]ScanResult, 0, batchSize)
+	processed := make(map[string]bool)
 
 	var totalProcessed int
 
@@ -233,12 +340,14 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 		if result.NewAsset != nil {
 			buff = append(buff, result)
 		}
+		processed[result.Path] = true
 		if len(buff) >= batchSize {
 			flush()
 		}
 		s.updateAndEmitTotal(&totalProcessed, totalToProcess, emitAfter)
 	}
 	flush()
+	return processed
 }
 func (s *Scanner) InsertAssets(ctx context.Context, buffer []ScanResult) error {
 	tx, err := s.conn.Begin()
@@ -296,13 +405,15 @@ func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry 
 }
 
 // Helper function that scans a directory for files, Add them to db and updates the total count
-func (s *Scanner) scanDirectory(ctx context.Context, folder database.ScanFolder, total *int, totalToProcess int, existingCache map[string]CachedAsset, foundAssets map[int64]bool) {
+func (s *Scanner) scanDirectory(scanCtx context.Context, folder database.ScanFolder, jobs chan<- ScanJob) error {
+	if scanCtx.Err() != nil {
+		return scanCtx.Err()
+	}
+
+	s.logger.Info("Scanning folder", "path", folder.Path)
+
 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
-		if ctx.Err() != nil {
-			return filepath.SkipAll
-		}
 		if err != nil {
-			s.logger.Warn("Error accessing path", "path", path, "error", err.Error())
 			return nil
 		}
 		if d.IsDir() {
@@ -314,121 +425,162 @@ func (s *Scanner) scanDirectory(ctx context.Context, folder database.ScanFolder,
 			s.logger.Debug("Extension not allowed", "path", path)
 			return nil
 		}
-		info, _ := d.Info()
-		fileType := DetermineFileType(ext)
-		if cached, exists := existingCache[path]; exists {
-			foundAssets[cached.ID] = true
-
-			if cached.ScanFolderID.Int64 != folder.ID {
-				s.logger.Info("Asset ownership change detected", "path", path, "old_folder", cached.ScanFolderID, "new_folder", folder.ID)
-				err := s.db.UpdateAssetLocation(ctx, database.UpdateAssetLocationParams{
-					ID:           cached.ID,
-					FilePath:     path,
-					ScanFolderID: sql.NullInt64{Int64: folder.ID, Valid: true},
-					LastScanned:  time.Now(),
-				})
-				if err != nil {
-					s.logger.Error("Failed to re-bind asset", "error", err)
-				}
-			}
-			cachedTime := existingCache[path].LastModified
-			diskTime := info.ModTime()
-			if cached.IsDeleted {
-				s.logger.Info("Restoring asset", "path", path)
-				s.db.RestoreAsset(ctx, cached.ID)
-				cached.IsDeleted = false
-			}
-			if !diskTime.Equal(cachedTime) {
-				//TODO: Update logic, robimy checka nazwy pliku i innych danych
-				// s.logger.Info("File modified, updating...", "path", path)
-			}
-			// Update procesu skanowania
-			s.updateAndEmitTotal(total, totalToProcess, 50)
-			//Tak to skip
-			return nil
+		job := ScanJob{
+			Path:     path,
+			FolderId: folder.ID,
+			Entry:    d,
 		}
-		var fileHash string
-		hash, err := CalculateFileHash(path, s.config.MaxAllowHashFileSize)
-		if err == nil {
-			fileHash = hash
-		} else {
-			s.logger.Debug("Failed to calculate hash", "path", path, "error", err)
-		}
-		// --- SELF-HEALING & DUPLICATE DETECTION ---
-		if fileHash != "" {
-			existingAsset, err := s.db.GetAssetByHash(ctx, sql.NullString{String: fileHash, Valid: true})
-
-			if err == nil {
-				isMove := false
-
-				if existingAsset.IsDeleted {
-					// Przypadek 1: Plik był w koszu
-					isMove = true
-				} else {
-					// Przypadek 2: Plik jest aktywny w bazie
-					if _, statErr := os.Stat(existingAsset.FilePath); os.IsNotExist(statErr) {
-						// Starego pliku nie ma na dysku
-						isMove = true
-					}
-					// Jeśli istnieje -> To jest KOPIA.
-				}
-
-				if isMove {
-					s.logger.Info("Self-healing: Asset moved", "old_path", existingAsset.FilePath, "new_path", path)
-					err := s.db.UpdateAssetLocation(ctx, database.UpdateAssetLocationParams{
-						ID:           existingAsset.ID,
-						FilePath:     path,
-						ScanFolderID: sql.NullInt64{Int64: int64(folder.ID), Valid: true},
-						LastScanned:  time.Now(),
-					})
-
-					if err != nil {
-						s.logger.Error("Failed to update moved asset", "error", err)
-					} else {
-						foundAssets[existingAsset.ID] = true
-						s.updateAndEmitTotal(total, d, totalToProcess)
-						return nil
-					}
-				} else {
-					s.logger.Info("Duplicate detected (Copy)", "path", path, "original_id", existingAsset.ID)
-				}
-			}
-		}
-		thumbResult, err := s.thumbGen.Generate(ctx, path)
-		if err != nil {
-			s.logger.Error("Critical thumbnail generation failure", "path", path, "error", err)
-		}
-		// TODO: Add thumbnail generation logic
-		hasValidDimensions := thumbResult.Metadata.Width > 0 && thumbResult.Metadata.Height > 0
-		_, dbErr := s.db.CreateAsset(ctx, database.CreateAssetParams{
-			ScanFolderID:    sql.NullInt64{Int64: int64(folder.ID), Valid: true},
-			FileName:        d.Name(),
-			FilePath:        path,
-			FileType:        fileType,
-			FileSize:        info.Size(),
-			ThumbnailPath:   thumbResult.WebPath,
-			FileHash:        sql.NullString{String: fileHash, Valid: fileHash != ""},
-			ImageWidth:      sql.NullInt64{Int64: int64(thumbResult.Metadata.Width), Valid: hasValidDimensions},
-			ImageHeight:     sql.NullInt64{Int64: int64(thumbResult.Metadata.Height), Valid: hasValidDimensions},
-			DominantColor:   sql.NullString{String: string(thumbResult.Metadata.DominantColor), Valid: thumbResult.Metadata.DominantColor != ""},
-			BitDepth:        sql.NullInt64{Int64: int64(thumbResult.Metadata.BitDepth), Valid: hasValidDimensions},
-			HasAlphaChannel: sql.NullBool{Bool: thumbResult.Metadata.HasAlphaChannel, Valid: hasValidDimensions},
-			LastModified:    info.ModTime(),
-			LastScanned:     time.Now(),
-		})
-		if dbErr != nil {
-			// TODO: Handle UNIQUE constraint violation
-			s.logger.Debug("Skipping asset", "path", path, "reason", dbErr)
-		} else {
-			s.updateAndEmitTotal(total, totalToProcess)
+		select {
+		case jobs <- job:
+			// Sukces, idziemy dalej
+		case <-scanCtx.Done():
+			// Koniec zabawy, przerywamy WalkDir
+			return filepath.SkipAll
 		}
 
 		return nil
 	})
+
 	if err != nil {
 		s.logger.Error("WalkDir failed", "path", folder.Path, "error", err)
+		return err
 	}
+	return nil
 }
+
+// func (s *Scanner) scanDirectory(ctx context.Context, folder database.ScanFolder, total *int, totalToProcess int, existingCache map[string]CachedAsset, foundAssets map[int64]bool) {
+// 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
+// 		if ctx.Err() != nil {
+// 			return filepath.SkipAll
+// 		}
+// 		if err != nil {
+// 			s.logger.Warn("Error accessing path", "path", path, "error", err.Error())
+// 			return nil
+// 		}
+// 		if d.IsDir() {
+// 			return nil
+// 		}
+
+// 		ext := filepath.Ext(path)
+// 		if isAllowed := s.IsExtensionAllowed(ext); !isAllowed {
+// 			s.logger.Debug("Extension not allowed", "path", path)
+// 			return nil
+// 		}
+// 		info, _ := d.Info()
+// 		fileType := DetermineFileType(ext)
+// 		if cached, exists := existingCache[path]; exists {
+// 			foundAssets[cached.ID] = true
+
+// 			if cached.ScanFolderID.Int64 != folder.ID {
+// 				s.logger.Info("Asset ownership change detected", "path", path, "old_folder", cached.ScanFolderID, "new_folder", folder.ID)
+// 				err := s.db.UpdateAssetLocation(ctx, database.UpdateAssetLocationParams{
+// 					ID:           cached.ID,
+// 					FilePath:     path,
+// 					ScanFolderID: sql.NullInt64{Int64: folder.ID, Valid: true},
+// 					LastScanned:  time.Now(),
+// 				})
+// 				if err != nil {
+// 					s.logger.Error("Failed to re-bind asset", "error", err)
+// 				}
+// 			}
+// 			cachedTime := existingCache[path].LastModified
+// 			diskTime := info.ModTime()
+// 			if cached.IsDeleted {
+// 				s.logger.Info("Restoring asset", "path", path)
+// 				s.db.RestoreAsset(ctx, cached.ID)
+// 				cached.IsDeleted = false
+// 			}
+// 			if !diskTime.Equal(cachedTime) {
+// 				//TODO: Update logic, robimy checka nazwy pliku i innych danych
+// 				// s.logger.Info("File modified, updating...", "path", path)
+// 			}
+// 			// Update procesu skanowania
+// 			s.updateAndEmitTotal(total, totalToProcess, 50)
+// 			//Tak to skip
+// 			return nil
+// 		}
+// 		var fileHash string
+// 		hash, err := CalculateFileHash(path, s.config.MaxAllowHashFileSize)
+// 		if err == nil {
+// 			fileHash = hash
+// 		} else {
+// 			s.logger.Debug("Failed to calculate hash", "path", path, "error", err)
+// 		}
+// 		// --- SELF-HEALING & DUPLICATE DETECTION ---
+// 		if fileHash != "" {
+// 			existingAsset, err := s.db.GetAssetByHash(ctx, sql.NullString{String: fileHash, Valid: true})
+
+// 			if err == nil {
+// 				isMove := false
+
+// 				if existingAsset.IsDeleted {
+// 					// Przypadek 1: Plik był w koszu
+// 					isMove = true
+// 				} else {
+// 					// Przypadek 2: Plik jest aktywny w bazie
+// 					if _, statErr := os.Stat(existingAsset.FilePath); os.IsNotExist(statErr) {
+// 						// Starego pliku nie ma na dysku
+// 						isMove = true
+// 					}
+// 					// Jeśli istnieje -> To jest KOPIA.
+// 				}
+
+// 				if isMove {
+// 					s.logger.Info("Self-healing: Asset moved", "old_path", existingAsset.FilePath, "new_path", path)
+// 					err := s.db.UpdateAssetLocation(ctx, database.UpdateAssetLocationParams{
+// 						ID:           existingAsset.ID,
+// 						FilePath:     path,
+// 						ScanFolderID: sql.NullInt64{Int64: int64(folder.ID), Valid: true},
+// 						LastScanned:  time.Now(),
+// 					})
+
+// 					if err != nil {
+// 						s.logger.Error("Failed to update moved asset", "error", err)
+// 					} else {
+// 						foundAssets[existingAsset.ID] = true
+// 						s.updateAndEmitTotal(total, d, totalToProcess)
+// 						return nil
+// 					}
+// 				} else {
+// 					s.logger.Info("Duplicate detected (Copy)", "path", path, "original_id", existingAsset.ID)
+// 				}
+// 			}
+// 		}
+// 		thumbResult, err := s.thumbGen.Generate(ctx, path)
+// 		if err != nil {
+// 			s.logger.Error("Critical thumbnail generation failure", "path", path, "error", err)
+// 		}
+// 		// TODO: Add thumbnail generation logic
+// 		hasValidDimensions := thumbResult.Metadata.Width > 0 && thumbResult.Metadata.Height > 0
+// 		_, dbErr := s.db.CreateAsset(ctx, database.CreateAssetParams{
+// 			ScanFolderID:    sql.NullInt64{Int64: int64(folder.ID), Valid: true},
+// 			FileName:        d.Name(),
+// 			FilePath:        path,
+// 			FileType:        fileType,
+// 			FileSize:        info.Size(),
+// 			ThumbnailPath:   thumbResult.WebPath,
+// 			FileHash:        sql.NullString{String: fileHash, Valid: fileHash != ""},
+// 			ImageWidth:      sql.NullInt64{Int64: int64(thumbResult.Metadata.Width), Valid: hasValidDimensions},
+// 			ImageHeight:     sql.NullInt64{Int64: int64(thumbResult.Metadata.Height), Valid: hasValidDimensions},
+// 			DominantColor:   sql.NullString{String: string(thumbResult.Metadata.DominantColor), Valid: thumbResult.Metadata.DominantColor != ""},
+// 			BitDepth:        sql.NullInt64{Int64: int64(thumbResult.Metadata.BitDepth), Valid: hasValidDimensions},
+// 			HasAlphaChannel: sql.NullBool{Bool: thumbResult.Metadata.HasAlphaChannel, Valid: hasValidDimensions},
+// 			LastModified:    info.ModTime(),
+// 			LastScanned:     time.Now(),
+// 		})
+// 		if dbErr != nil {
+// 			// TODO: Handle UNIQUE constraint violation
+// 			s.logger.Debug("Skipping asset", "path", path, "reason", dbErr)
+// 		} else {
+// 			s.updateAndEmitTotal(total, totalToProcess)
+// 		}
+
+// 		return nil
+// 	})
+// 	if err != nil {
+// 		s.logger.Error("WalkDir failed", "path", folder.Path, "error", err)
+// 	}
+// }
 
 func (s *Scanner) getAllFilesCount(folder database.ScanFolder) int {
 	var total = 0
@@ -467,6 +619,7 @@ func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsse
 			LastModified: row.LastModified,
 			IsDeleted:    row.IsDeleted,
 			ScanFolderID: row.ScanFolderID,
+			FilePath:     row.FilePath,
 		}
 	}
 	s.logger.Info("Loaded assets cache", "count", len(existing))
