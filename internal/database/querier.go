@@ -47,6 +47,7 @@ type Querier interface {
 	ListTags(ctx context.Context) ([]ListTagsRow, error)
 	ListUntaggedAssets(ctx context.Context, arg ListUntaggedAssetsParams) ([]Asset, error)
 	MoveAssetsToFolder(ctx context.Context, arg MoveAssetsToFolderParams) error
+	RefreshAssetTechnicalMetadata(ctx context.Context, arg RefreshAssetTechnicalMetadataParams) error
 	RemoveAssetFromMaterialSet(ctx context.Context, arg RemoveAssetFromMaterialSetParams) error
 	RemoveTagFromAsset(ctx context.Context, arg RemoveTagFromAssetParams) error
 	RestoreAsset(ctx context.Context, id int64) error

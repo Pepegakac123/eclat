@@ -56,6 +56,19 @@ WHERE a.is_favorite = 1
 ORDER BY a.date_added DESC
 LIMIT ? OFFSET ?;
 
+-- name: RefreshAssetTechnicalMetadata :exec
+UPDATE assets
+SET
+    file_size = ?,
+    last_modified = ?,
+    last_scanned = ?,
+    thumbnail_path = ?,
+    image_width = ?,
+    image_height = ?,
+    dominant_color = ?,
+    bit_depth = ?,
+    has_alpha_channel = ?
+WHERE id = ?;
 
 -- name: ListDeletedAssets :many
 SELECT * FROM assets
