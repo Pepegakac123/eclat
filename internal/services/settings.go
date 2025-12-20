@@ -61,34 +61,51 @@ func (s *SettingsService) GetFolders() ([]ScanFolderDTO, error) {
 	return dtos, nil
 }
 
-// UpdateFolderStatus
-// --- ZMIANA: Zwracamy ScanFolderDTO ---
+// UpdateFolderStatus toggles the active state of a folder and updates visibility of its assets.
 func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (ScanFolderDTO, error) {
+
 	err := s.db.UpdateScanFolderStatus(s.ctx, database.UpdateScanFolderStatusParams{
 		IsActive: isActive,
 		ID:       id,
 	})
 	if err != nil {
+		s.logger.Error("Failed to update folder status", "error", err)
 		return ScanFolderDTO{}, err
 	}
 
-	// Logika "ukrywania" assetów
-	if !isActive {
-		folder, _ := s.db.GetScanFolderById(s.ctx, id)
-		if parent := s.findBestParent(folder); parent != nil {
-			wailsRuntime.EventsEmit(s.ctx, "toast", map[string]string{
-				"type":    "info",
-				"title":   "Monitoring Paused",
-				"message": fmt.Sprintf("Assets hidden inside '%s'.", filepath.Base(parent.Path)),
-			})
-		}
+	shouldHide := !isActive
+
+	err = s.db.SetAssetsHiddenByFolderId(s.ctx, database.SetAssetsHiddenByFolderIdParams{
+		IsHidden:     shouldHide,
+		ScanFolderID: sql.NullInt64{Int64: id, Valid: true},
+	})
+
+	if err != nil {
+		s.logger.Error("Failed to update assets visibility", "folderId", id, "error", err)
 	}
 
+	// C. UI Feedback (Toast)
+	statusMsg := "restored"
+	if !isActive {
+		statusMsg = "hidden"
+	}
+
+	wailsRuntime.EventsEmit(s.ctx, "toast", map[string]string{
+		"type":    "info",
+		"title":   "Folder Updated",
+		"message": fmt.Sprintf("Folder is now %s. Assets are %s.", boolToStatus(isActive), statusMsg),
+	})
 	updatedFolder, err := s.db.GetScanFolderById(s.ctx, id)
 	if err != nil {
 		return ScanFolderDTO{}, err
 	}
 	return s.mapToDTO(updatedFolder), nil
+}
+func boolToStatus(active bool) string {
+	if active {
+		return "Active"
+	}
+	return "Paused"
 }
 
 // DeleteFolder - KOSZ

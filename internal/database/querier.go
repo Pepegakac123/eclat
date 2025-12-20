@@ -54,6 +54,7 @@ type Querier interface {
 	RestoreScanFolder(ctx context.Context, id int64) error
 	SetAssetHidden(ctx context.Context, arg SetAssetHiddenParams) error
 	SetAssetRating(ctx context.Context, arg SetAssetRatingParams) error
+	SetAssetsHiddenByFolderId(ctx context.Context, arg SetAssetsHiddenByFolderIdParams) error
 	SetSystemSetting(ctx context.Context, arg SetSystemSettingParams) error
 	SoftDeleteAsset(ctx context.Context, id int64) error
 	SoftDeleteScanFolder(ctx context.Context, id int64) error

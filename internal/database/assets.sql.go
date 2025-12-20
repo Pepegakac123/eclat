@@ -777,6 +777,22 @@ func (q *Queries) SetAssetRating(ctx context.Context, arg SetAssetRatingParams) 
 	return err
 }
 
+const setAssetsHiddenByFolderId = `-- name: SetAssetsHiddenByFolderId :exec
+UPDATE assets
+SET is_hidden = ?
+WHERE scan_folder_id = ?
+`
+
+type SetAssetsHiddenByFolderIdParams struct {
+	IsHidden     bool          `json:"isHidden"`
+	ScanFolderID sql.NullInt64 `json:"scanFolderId"`
+}
+
+func (q *Queries) SetAssetsHiddenByFolderId(ctx context.Context, arg SetAssetsHiddenByFolderIdParams) error {
+	_, err := q.exec(ctx, q.setAssetsHiddenByFolderIdStmt, setAssetsHiddenByFolderId, arg.IsHidden, arg.ScanFolderID)
+	return err
+}
+
 const softDeleteAsset = `-- name: SoftDeleteAsset :exec
 UPDATE assets
 SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP

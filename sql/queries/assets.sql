@@ -45,6 +45,10 @@ LIMIT ? OFFSET ?;
 -- name: SetAssetHidden :exec
 UPDATE assets SET is_hidden = ? WHERE id = ?;
 
+-- name: SetAssetsHiddenByFolderId :exec
+UPDATE assets
+SET is_hidden = ?
+WHERE scan_folder_id = ?;
 -- name: ListFavoriteAssets :many
 SELECT a.* FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id

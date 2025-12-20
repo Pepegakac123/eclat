@@ -156,6 +156,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setAssetRatingStmt, err = db.PrepareContext(ctx, setAssetRating); err != nil {
 		return nil, fmt.Errorf("error preparing query SetAssetRating: %w", err)
 	}
+	if q.setAssetsHiddenByFolderIdStmt, err = db.PrepareContext(ctx, setAssetsHiddenByFolderId); err != nil {
+		return nil, fmt.Errorf("error preparing query SetAssetsHiddenByFolderId: %w", err)
+	}
 	if q.setSystemSettingStmt, err = db.PrepareContext(ctx, setSystemSetting); err != nil {
 		return nil, fmt.Errorf("error preparing query SetSystemSetting: %w", err)
 	}
@@ -411,6 +414,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setAssetRatingStmt: %w", cerr)
 		}
 	}
+	if q.setAssetsHiddenByFolderIdStmt != nil {
+		if cerr := q.setAssetsHiddenByFolderIdStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setAssetsHiddenByFolderIdStmt: %w", cerr)
+		}
+	}
 	if q.setSystemSettingStmt != nil {
 		if cerr := q.setSystemSettingStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setSystemSettingStmt: %w", cerr)
@@ -544,6 +552,7 @@ type Queries struct {
 	restoreScanFolderStmt             *sql.Stmt
 	setAssetHiddenStmt                *sql.Stmt
 	setAssetRatingStmt                *sql.Stmt
+	setAssetsHiddenByFolderIdStmt     *sql.Stmt
 	setSystemSettingStmt              *sql.Stmt
 	softDeleteAssetStmt               *sql.Stmt
 	softDeleteScanFolderStmt          *sql.Stmt
@@ -604,6 +613,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		restoreScanFolderStmt:             q.restoreScanFolderStmt,
 		setAssetHiddenStmt:                q.setAssetHiddenStmt,
 		setAssetRatingStmt:                q.setAssetRatingStmt,
+		setAssetsHiddenByFolderIdStmt:     q.setAssetsHiddenByFolderIdStmt,
 		setSystemSettingStmt:              q.setSystemSettingStmt,
 		softDeleteAssetStmt:               q.softDeleteAssetStmt,
 		softDeleteScanFolderStmt:          q.softDeleteScanFolderStmt,
