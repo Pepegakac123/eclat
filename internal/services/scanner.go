@@ -82,7 +82,7 @@ func (s *Scanner) StartScan() error {
 	s.isScanning.Store(true)
 	scanCtx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
-	s.ctx = scanCtx
+
 	jobs := make(chan ScanJob, 100)
 	results := make(chan ScanResult, 100)
 
@@ -119,6 +119,11 @@ func (s *Scanner) StartScan() error {
 			totalToProcess += s.getAllFilesCount(f)
 		}
 		s.logger.Info("Total files to scan calculated", "count", totalToProcess)
+		runtime.EventsEmit(s.ctx, "scan_progress", map[string]any{
+			"current":  0,
+			"total":    totalToProcess,
+			"lastFile": "Initializing...",
+		})
 		go func() {
 			defer close(collectorDone)
 			foundOnDisk = s.Collector(scanCtx, totalToProcess, results)
@@ -182,10 +187,8 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 
 		hash, err := CalculateFileHash(job.Path, s.config.MaxAllowHashFileSize)
 		if err != nil {
-			s.logger.Warn("Hashing failed", "path", job.Path, "error", err)
-			result.Err = err
-			results <- result
-			continue
+			s.logger.Warn("Hashing skipped (likely too large)", "path", job.Path, "reason", err)
+			hash = ""
 		}
 		var exist database.Asset
 		var lookupErr error
