@@ -124,12 +124,20 @@ func (g *ThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailResult,
 func (g *ThumbnailGenerator) extractMetadataFromImage(img image.Image) ImageMetadata {
 	bounds := img.Bounds()
 	domColorHex, err := CalculateDominantColor(img)
+	var closestColor string
+	var hexColor string
 	if err != nil {
-		g.logger.Warn("Failed to calc dominant color", "err", err)
-	}
-	closestColor, err := FindClosestPaletteColor(domColorHex, predefinedPalette)
-	if err != nil {
-		g.logger.Warn("Failed to calc closest color", "err", err)
+		g.logger.Warn("Skipping color analysis", "reason", err)
+		hexColor = ""
+	} else {
+
+		hexColor = domColorHex
+		closest, err := FindClosestPaletteColor(domColorHex, predefinedPalette)
+		if err != nil {
+			g.logger.Warn("Failed to find closest color", "hex", hexColor, "error", err)
+		} else {
+			closestColor = closest
+		}
 	}
 	meta := ImageMetadata{
 		Width:           bounds.Dx(),

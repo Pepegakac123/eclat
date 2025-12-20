@@ -45,6 +45,10 @@ LIMIT ? OFFSET ?;
 -- name: SetAssetHidden :exec
 UPDATE assets SET is_hidden = ? WHERE id = ?;
 
+-- name: SetAssetsHiddenByFolderId :exec
+UPDATE assets
+SET is_hidden = ?
+WHERE scan_folder_id = ?;
 -- name: ListFavoriteAssets :many
 SELECT a.* FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
@@ -56,6 +60,19 @@ WHERE a.is_favorite = 1
 ORDER BY a.date_added DESC
 LIMIT ? OFFSET ?;
 
+-- name: RefreshAssetTechnicalMetadata :exec
+UPDATE assets
+SET
+    file_size = ?,
+    last_modified = ?,
+    last_scanned = ?,
+    thumbnail_path = ?,
+    image_width = ?,
+    image_height = ?,
+    dominant_color = ?,
+    bit_depth = ?,
+    has_alpha_channel = ?
+WHERE id = ?;
 
 -- name: ListDeletedAssets :many
 SELECT * FROM assets

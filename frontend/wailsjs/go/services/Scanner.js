@@ -6,12 +6,20 @@ export function AddExtensions(arg1) {
   return window['go']['services']['Scanner']['AddExtensions'](arg1);
 }
 
+export function Collector(arg1, arg2, arg3) {
+  return window['go']['services']['Scanner']['Collector'](arg1, arg2, arg3);
+}
+
 export function GetConfig() {
   return window['go']['services']['Scanner']['GetConfig']();
 }
 
 export function GetPredefinedPalette() {
   return window['go']['services']['Scanner']['GetPredefinedPalette']();
+}
+
+export function InsertAssets(arg1, arg2) {
+  return window['go']['services']['Scanner']['InsertAssets'](arg1, arg2);
 }
 
 export function IsExtensionAllowed(arg1) {
@@ -32,4 +40,8 @@ export function Startup(arg1) {
 
 export function StopScan() {
   return window['go']['services']['Scanner']['StopScan']();
+}
+
+export function Worker(arg1, arg2, arg3, arg4) {
+  return window['go']['services']['Scanner']['Worker'](arg1, arg2, arg3, arg4);
 }

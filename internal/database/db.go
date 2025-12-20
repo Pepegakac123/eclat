@@ -135,6 +135,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.moveAssetsToFolderStmt, err = db.PrepareContext(ctx, moveAssetsToFolder); err != nil {
 		return nil, fmt.Errorf("error preparing query MoveAssetsToFolder: %w", err)
 	}
+	if q.refreshAssetTechnicalMetadataStmt, err = db.PrepareContext(ctx, refreshAssetTechnicalMetadata); err != nil {
+		return nil, fmt.Errorf("error preparing query RefreshAssetTechnicalMetadata: %w", err)
+	}
 	if q.removeAssetFromMaterialSetStmt, err = db.PrepareContext(ctx, removeAssetFromMaterialSet); err != nil {
 		return nil, fmt.Errorf("error preparing query RemoveAssetFromMaterialSet: %w", err)
 	}
@@ -152,6 +155,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setAssetRatingStmt, err = db.PrepareContext(ctx, setAssetRating); err != nil {
 		return nil, fmt.Errorf("error preparing query SetAssetRating: %w", err)
+	}
+	if q.setAssetsHiddenByFolderIdStmt, err = db.PrepareContext(ctx, setAssetsHiddenByFolderId); err != nil {
+		return nil, fmt.Errorf("error preparing query SetAssetsHiddenByFolderId: %w", err)
 	}
 	if q.setSystemSettingStmt, err = db.PrepareContext(ctx, setSystemSetting); err != nil {
 		return nil, fmt.Errorf("error preparing query SetSystemSetting: %w", err)
@@ -373,6 +379,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing moveAssetsToFolderStmt: %w", cerr)
 		}
 	}
+	if q.refreshAssetTechnicalMetadataStmt != nil {
+		if cerr := q.refreshAssetTechnicalMetadataStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing refreshAssetTechnicalMetadataStmt: %w", cerr)
+		}
+	}
 	if q.removeAssetFromMaterialSetStmt != nil {
 		if cerr := q.removeAssetFromMaterialSetStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing removeAssetFromMaterialSetStmt: %w", cerr)
@@ -401,6 +412,11 @@ func (q *Queries) Close() error {
 	if q.setAssetRatingStmt != nil {
 		if cerr := q.setAssetRatingStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setAssetRatingStmt: %w", cerr)
+		}
+	}
+	if q.setAssetsHiddenByFolderIdStmt != nil {
+		if cerr := q.setAssetsHiddenByFolderIdStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setAssetsHiddenByFolderIdStmt: %w", cerr)
 		}
 	}
 	if q.setSystemSettingStmt != nil {
@@ -490,119 +506,123 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                              DBTX
-	tx                              *sql.Tx
-	addAssetToMaterialSetStmt       *sql.Stmt
-	addTagToAssetStmt               *sql.Stmt
-	claimAssetsForPathStmt          *sql.Stmt
-	clearTagsFromAssetStmt          *sql.Stmt
-	createAssetStmt                 *sql.Stmt
-	createMaterialSetStmt           *sql.Stmt
-	createSavedSearchStmt           *sql.Stmt
-	createScanFolderStmt            *sql.Stmt
-	createTagStmt                   *sql.Stmt
-	deleteAssetByFolderStmt         *sql.Stmt
-	deleteAssetPermanentStmt        *sql.Stmt
-	deleteMaterialSetStmt           *sql.Stmt
-	deleteSavedSearchStmt           *sql.Stmt
-	getAllColorsStmt                *sql.Stmt
-	getAssetByHashStmt              *sql.Stmt
-	getAssetByIdStmt                *sql.Stmt
-	getAssetByPathStmt              *sql.Stmt
-	getLibraryStatsStmt             *sql.Stmt
-	getMaterialSetByIdStmt          *sql.Stmt
-	getScanFolderByIdStmt           *sql.Stmt
-	getScanFolderByPathStmt         *sql.Stmt
-	getSidebarStatsStmt             *sql.Stmt
-	getSystemSettingStmt            *sql.Stmt
-	getTagByNameStmt                *sql.Stmt
-	getTagsForAssetStmt             *sql.Stmt
-	listAssetsStmt                  *sql.Stmt
-	listAssetsForCacheStmt          *sql.Stmt
-	listAssetsInMaterialSetStmt     *sql.Stmt
-	listDeletedAssetsStmt           *sql.Stmt
-	listFavoriteAssetsStmt          *sql.Stmt
-	listHiddenAssetsStmt            *sql.Stmt
-	listMaterialSetsStmt            *sql.Stmt
-	listSavedSearchesStmt           *sql.Stmt
-	listScanFoldersStmt             *sql.Stmt
-	listTagsStmt                    *sql.Stmt
-	listUntaggedAssetsStmt          *sql.Stmt
-	moveAssetsToFolderStmt          *sql.Stmt
-	removeAssetFromMaterialSetStmt  *sql.Stmt
-	removeTagFromAssetStmt          *sql.Stmt
-	restoreAssetStmt                *sql.Stmt
-	restoreScanFolderStmt           *sql.Stmt
-	setAssetHiddenStmt              *sql.Stmt
-	setAssetRatingStmt              *sql.Stmt
-	setSystemSettingStmt            *sql.Stmt
-	softDeleteAssetStmt             *sql.Stmt
-	softDeleteScanFolderStmt        *sql.Stmt
-	toggleAssetFavoriteStmt         *sql.Stmt
-	updateAssetLocationStmt         *sql.Stmt
-	updateAssetMetadataStmt         *sql.Stmt
-	updateAssetScanStatusStmt       *sql.Stmt
-	updateMaterialSetStmt           *sql.Stmt
-	updateScanFolderLastScannedStmt *sql.Stmt
-	updateScanFolderStatusStmt      *sql.Stmt
+	db                                DBTX
+	tx                                *sql.Tx
+	addAssetToMaterialSetStmt         *sql.Stmt
+	addTagToAssetStmt                 *sql.Stmt
+	claimAssetsForPathStmt            *sql.Stmt
+	clearTagsFromAssetStmt            *sql.Stmt
+	createAssetStmt                   *sql.Stmt
+	createMaterialSetStmt             *sql.Stmt
+	createSavedSearchStmt             *sql.Stmt
+	createScanFolderStmt              *sql.Stmt
+	createTagStmt                     *sql.Stmt
+	deleteAssetByFolderStmt           *sql.Stmt
+	deleteAssetPermanentStmt          *sql.Stmt
+	deleteMaterialSetStmt             *sql.Stmt
+	deleteSavedSearchStmt             *sql.Stmt
+	getAllColorsStmt                  *sql.Stmt
+	getAssetByHashStmt                *sql.Stmt
+	getAssetByIdStmt                  *sql.Stmt
+	getAssetByPathStmt                *sql.Stmt
+	getLibraryStatsStmt               *sql.Stmt
+	getMaterialSetByIdStmt            *sql.Stmt
+	getScanFolderByIdStmt             *sql.Stmt
+	getScanFolderByPathStmt           *sql.Stmt
+	getSidebarStatsStmt               *sql.Stmt
+	getSystemSettingStmt              *sql.Stmt
+	getTagByNameStmt                  *sql.Stmt
+	getTagsForAssetStmt               *sql.Stmt
+	listAssetsStmt                    *sql.Stmt
+	listAssetsForCacheStmt            *sql.Stmt
+	listAssetsInMaterialSetStmt       *sql.Stmt
+	listDeletedAssetsStmt             *sql.Stmt
+	listFavoriteAssetsStmt            *sql.Stmt
+	listHiddenAssetsStmt              *sql.Stmt
+	listMaterialSetsStmt              *sql.Stmt
+	listSavedSearchesStmt             *sql.Stmt
+	listScanFoldersStmt               *sql.Stmt
+	listTagsStmt                      *sql.Stmt
+	listUntaggedAssetsStmt            *sql.Stmt
+	moveAssetsToFolderStmt            *sql.Stmt
+	refreshAssetTechnicalMetadataStmt *sql.Stmt
+	removeAssetFromMaterialSetStmt    *sql.Stmt
+	removeTagFromAssetStmt            *sql.Stmt
+	restoreAssetStmt                  *sql.Stmt
+	restoreScanFolderStmt             *sql.Stmt
+	setAssetHiddenStmt                *sql.Stmt
+	setAssetRatingStmt                *sql.Stmt
+	setAssetsHiddenByFolderIdStmt     *sql.Stmt
+	setSystemSettingStmt              *sql.Stmt
+	softDeleteAssetStmt               *sql.Stmt
+	softDeleteScanFolderStmt          *sql.Stmt
+	toggleAssetFavoriteStmt           *sql.Stmt
+	updateAssetLocationStmt           *sql.Stmt
+	updateAssetMetadataStmt           *sql.Stmt
+	updateAssetScanStatusStmt         *sql.Stmt
+	updateMaterialSetStmt             *sql.Stmt
+	updateScanFolderLastScannedStmt   *sql.Stmt
+	updateScanFolderStatusStmt        *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                              tx,
-		tx:                              tx,
-		addAssetToMaterialSetStmt:       q.addAssetToMaterialSetStmt,
-		addTagToAssetStmt:               q.addTagToAssetStmt,
-		claimAssetsForPathStmt:          q.claimAssetsForPathStmt,
-		clearTagsFromAssetStmt:          q.clearTagsFromAssetStmt,
-		createAssetStmt:                 q.createAssetStmt,
-		createMaterialSetStmt:           q.createMaterialSetStmt,
-		createSavedSearchStmt:           q.createSavedSearchStmt,
-		createScanFolderStmt:            q.createScanFolderStmt,
-		createTagStmt:                   q.createTagStmt,
-		deleteAssetByFolderStmt:         q.deleteAssetByFolderStmt,
-		deleteAssetPermanentStmt:        q.deleteAssetPermanentStmt,
-		deleteMaterialSetStmt:           q.deleteMaterialSetStmt,
-		deleteSavedSearchStmt:           q.deleteSavedSearchStmt,
-		getAllColorsStmt:                q.getAllColorsStmt,
-		getAssetByHashStmt:              q.getAssetByHashStmt,
-		getAssetByIdStmt:                q.getAssetByIdStmt,
-		getAssetByPathStmt:              q.getAssetByPathStmt,
-		getLibraryStatsStmt:             q.getLibraryStatsStmt,
-		getMaterialSetByIdStmt:          q.getMaterialSetByIdStmt,
-		getScanFolderByIdStmt:           q.getScanFolderByIdStmt,
-		getScanFolderByPathStmt:         q.getScanFolderByPathStmt,
-		getSidebarStatsStmt:             q.getSidebarStatsStmt,
-		getSystemSettingStmt:            q.getSystemSettingStmt,
-		getTagByNameStmt:                q.getTagByNameStmt,
-		getTagsForAssetStmt:             q.getTagsForAssetStmt,
-		listAssetsStmt:                  q.listAssetsStmt,
-		listAssetsForCacheStmt:          q.listAssetsForCacheStmt,
-		listAssetsInMaterialSetStmt:     q.listAssetsInMaterialSetStmt,
-		listDeletedAssetsStmt:           q.listDeletedAssetsStmt,
-		listFavoriteAssetsStmt:          q.listFavoriteAssetsStmt,
-		listHiddenAssetsStmt:            q.listHiddenAssetsStmt,
-		listMaterialSetsStmt:            q.listMaterialSetsStmt,
-		listSavedSearchesStmt:           q.listSavedSearchesStmt,
-		listScanFoldersStmt:             q.listScanFoldersStmt,
-		listTagsStmt:                    q.listTagsStmt,
-		listUntaggedAssetsStmt:          q.listUntaggedAssetsStmt,
-		moveAssetsToFolderStmt:          q.moveAssetsToFolderStmt,
-		removeAssetFromMaterialSetStmt:  q.removeAssetFromMaterialSetStmt,
-		removeTagFromAssetStmt:          q.removeTagFromAssetStmt,
-		restoreAssetStmt:                q.restoreAssetStmt,
-		restoreScanFolderStmt:           q.restoreScanFolderStmt,
-		setAssetHiddenStmt:              q.setAssetHiddenStmt,
-		setAssetRatingStmt:              q.setAssetRatingStmt,
-		setSystemSettingStmt:            q.setSystemSettingStmt,
-		softDeleteAssetStmt:             q.softDeleteAssetStmt,
-		softDeleteScanFolderStmt:        q.softDeleteScanFolderStmt,
-		toggleAssetFavoriteStmt:         q.toggleAssetFavoriteStmt,
-		updateAssetLocationStmt:         q.updateAssetLocationStmt,
-		updateAssetMetadataStmt:         q.updateAssetMetadataStmt,
-		updateAssetScanStatusStmt:       q.updateAssetScanStatusStmt,
-		updateMaterialSetStmt:           q.updateMaterialSetStmt,
-		updateScanFolderLastScannedStmt: q.updateScanFolderLastScannedStmt,
-		updateScanFolderStatusStmt:      q.updateScanFolderStatusStmt,
+		db:                                tx,
+		tx:                                tx,
+		addAssetToMaterialSetStmt:         q.addAssetToMaterialSetStmt,
+		addTagToAssetStmt:                 q.addTagToAssetStmt,
+		claimAssetsForPathStmt:            q.claimAssetsForPathStmt,
+		clearTagsFromAssetStmt:            q.clearTagsFromAssetStmt,
+		createAssetStmt:                   q.createAssetStmt,
+		createMaterialSetStmt:             q.createMaterialSetStmt,
+		createSavedSearchStmt:             q.createSavedSearchStmt,
+		createScanFolderStmt:              q.createScanFolderStmt,
+		createTagStmt:                     q.createTagStmt,
+		deleteAssetByFolderStmt:           q.deleteAssetByFolderStmt,
+		deleteAssetPermanentStmt:          q.deleteAssetPermanentStmt,
+		deleteMaterialSetStmt:             q.deleteMaterialSetStmt,
+		deleteSavedSearchStmt:             q.deleteSavedSearchStmt,
+		getAllColorsStmt:                  q.getAllColorsStmt,
+		getAssetByHashStmt:                q.getAssetByHashStmt,
+		getAssetByIdStmt:                  q.getAssetByIdStmt,
+		getAssetByPathStmt:                q.getAssetByPathStmt,
+		getLibraryStatsStmt:               q.getLibraryStatsStmt,
+		getMaterialSetByIdStmt:            q.getMaterialSetByIdStmt,
+		getScanFolderByIdStmt:             q.getScanFolderByIdStmt,
+		getScanFolderByPathStmt:           q.getScanFolderByPathStmt,
+		getSidebarStatsStmt:               q.getSidebarStatsStmt,
+		getSystemSettingStmt:              q.getSystemSettingStmt,
+		getTagByNameStmt:                  q.getTagByNameStmt,
+		getTagsForAssetStmt:               q.getTagsForAssetStmt,
+		listAssetsStmt:                    q.listAssetsStmt,
+		listAssetsForCacheStmt:            q.listAssetsForCacheStmt,
+		listAssetsInMaterialSetStmt:       q.listAssetsInMaterialSetStmt,
+		listDeletedAssetsStmt:             q.listDeletedAssetsStmt,
+		listFavoriteAssetsStmt:            q.listFavoriteAssetsStmt,
+		listHiddenAssetsStmt:              q.listHiddenAssetsStmt,
+		listMaterialSetsStmt:              q.listMaterialSetsStmt,
+		listSavedSearchesStmt:             q.listSavedSearchesStmt,
+		listScanFoldersStmt:               q.listScanFoldersStmt,
+		listTagsStmt:                      q.listTagsStmt,
+		listUntaggedAssetsStmt:            q.listUntaggedAssetsStmt,
+		moveAssetsToFolderStmt:            q.moveAssetsToFolderStmt,
+		refreshAssetTechnicalMetadataStmt: q.refreshAssetTechnicalMetadataStmt,
+		removeAssetFromMaterialSetStmt:    q.removeAssetFromMaterialSetStmt,
+		removeTagFromAssetStmt:            q.removeTagFromAssetStmt,
+		restoreAssetStmt:                  q.restoreAssetStmt,
+		restoreScanFolderStmt:             q.restoreScanFolderStmt,
+		setAssetHiddenStmt:                q.setAssetHiddenStmt,
+		setAssetRatingStmt:                q.setAssetRatingStmt,
+		setAssetsHiddenByFolderIdStmt:     q.setAssetsHiddenByFolderIdStmt,
+		setSystemSettingStmt:              q.setSystemSettingStmt,
+		softDeleteAssetStmt:               q.softDeleteAssetStmt,
+		softDeleteScanFolderStmt:          q.softDeleteScanFolderStmt,
+		toggleAssetFavoriteStmt:           q.toggleAssetFavoriteStmt,
+		updateAssetLocationStmt:           q.updateAssetLocationStmt,
+		updateAssetMetadataStmt:           q.updateAssetMetadataStmt,
+		updateAssetScanStatusStmt:         q.updateAssetScanStatusStmt,
+		updateMaterialSetStmt:             q.updateMaterialSetStmt,
+		updateScanFolderLastScannedStmt:   q.updateScanFolderLastScannedStmt,
+		updateScanFolderStatusStmt:        q.updateScanFolderStatusStmt,
 	}
 }

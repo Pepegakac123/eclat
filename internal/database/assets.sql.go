@@ -694,6 +694,50 @@ func (q *Queries) MoveAssetsToFolder(ctx context.Context, arg MoveAssetsToFolder
 	return err
 }
 
+const refreshAssetTechnicalMetadata = `-- name: RefreshAssetTechnicalMetadata :exec
+UPDATE assets
+SET
+    file_size = ?,
+    last_modified = ?,
+    last_scanned = ?,
+    thumbnail_path = ?,
+    image_width = ?,
+    image_height = ?,
+    dominant_color = ?,
+    bit_depth = ?,
+    has_alpha_channel = ?
+WHERE id = ?
+`
+
+type RefreshAssetTechnicalMetadataParams struct {
+	FileSize        int64          `json:"fileSize"`
+	LastModified    time.Time      `json:"lastModified"`
+	LastScanned     time.Time      `json:"lastScanned"`
+	ThumbnailPath   string         `json:"thumbnailPath"`
+	ImageWidth      sql.NullInt64  `json:"imageWidth"`
+	ImageHeight     sql.NullInt64  `json:"imageHeight"`
+	DominantColor   sql.NullString `json:"dominantColor"`
+	BitDepth        sql.NullInt64  `json:"bitDepth"`
+	HasAlphaChannel sql.NullBool   `json:"hasAlphaChannel"`
+	ID              int64          `json:"id"`
+}
+
+func (q *Queries) RefreshAssetTechnicalMetadata(ctx context.Context, arg RefreshAssetTechnicalMetadataParams) error {
+	_, err := q.exec(ctx, q.refreshAssetTechnicalMetadataStmt, refreshAssetTechnicalMetadata,
+		arg.FileSize,
+		arg.LastModified,
+		arg.LastScanned,
+		arg.ThumbnailPath,
+		arg.ImageWidth,
+		arg.ImageHeight,
+		arg.DominantColor,
+		arg.BitDepth,
+		arg.HasAlphaChannel,
+		arg.ID,
+	)
+	return err
+}
+
 const restoreAsset = `-- name: RestoreAsset :exec
 UPDATE assets
 SET is_deleted = 0, deleted_at = NULL
@@ -730,6 +774,22 @@ type SetAssetRatingParams struct {
 
 func (q *Queries) SetAssetRating(ctx context.Context, arg SetAssetRatingParams) error {
 	_, err := q.exec(ctx, q.setAssetRatingStmt, setAssetRating, arg.Rating, arg.ID)
+	return err
+}
+
+const setAssetsHiddenByFolderId = `-- name: SetAssetsHiddenByFolderId :exec
+UPDATE assets
+SET is_hidden = ?
+WHERE scan_folder_id = ?
+`
+
+type SetAssetsHiddenByFolderIdParams struct {
+	IsHidden     bool          `json:"isHidden"`
+	ScanFolderID sql.NullInt64 `json:"scanFolderId"`
+}
+
+func (q *Queries) SetAssetsHiddenByFolderId(ctx context.Context, arg SetAssetsHiddenByFolderIdParams) error {
+	_, err := q.exec(ctx, q.setAssetsHiddenByFolderIdStmt, setAssetsHiddenByFolderId, arg.IsHidden, arg.ScanFolderID)
 	return err
 }
 
