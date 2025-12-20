@@ -26,14 +26,30 @@ var assets embed.FS
 var embedMigrations embed.FS
 
 func main() {
-	// 1. DATABASE SETUP
-	db, err := sql.Open("sqlite", "assets.db?_pragma=foreign_keys(1)")
+	userCacheDir, err := os.UserCacheDir()
+	if err != nil {
+		log.Fatal("Cannot get cache dir:", err)
+	}
+	// Główny folder: .../AppData/Local/eclat (Windows) lub ~/Library/Caches/eclat (macOS)
+	appCachePath := filepath.Join(userCacheDir, "eclat")
+
+	dbFolder := filepath.Join(appCachePath, "db")
+	thumbsFolder := filepath.Join(appCachePath, "thumbnails")
+
+	dirsToCreate := []string{appCachePath, dbFolder, thumbsFolder}
+	for _, dir := range dirsToCreate {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Fatalf("Cannot create directory %s: %v", dir, err)
+		}
+	}
+	dbPath := filepath.Join(dbFolder, "assets.db")
+
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode=WAL")
 	if err != nil {
 		log.Fatal("Failed to open DB:", err)
 	}
 	defer db.Close()
 
-	// 2. MIGRATIONS
 	goose.SetBaseFS(embedMigrations)
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		log.Fatal("Failed to set dialect:", err)
@@ -41,27 +57,14 @@ func main() {
 	if err := goose.Up(db, "sql/schema"); err != nil {
 		log.Fatal("Failed to run migrations:", err)
 	}
-
-	// 3. SERVICE SETUP (Dependency Injection)
 	queries := database.New(db)
 
-	userCacheDir, err := os.UserCacheDir()
-	if err != nil {
-		log.Fatal("Cannot get cache dir:", err)
-	}
-	appCachePath := filepath.Join(userCacheDir, "eclat", "thumbnails")
-	if err := os.MkdirAll(appCachePath, 0755); err != nil {
-		log.Fatal("Cannot create cache dir:", err)
-	}
-
-	thumbGen := services.NewThumbnailGenerator(appCachePath, slog.Default())
+	thumbGen := services.NewThumbnailGenerator(thumbsFolder, slog.Default())
 	scannerService := services.NewScanner(db, queries, thumbGen)
 	settingsService := services.NewSettingsService(queries)
 
-	// 4. APP SETUP
 	myApp := app.NewApp(scannerService, settingsService)
 
-	// 5. WAILS RUN
 	err = wails.Run(&options.App{
 		Title:            "Eclat",
 		WindowStartState: options.Maximised,
@@ -75,15 +78,11 @@ func main() {
 				myApp.RestoreWindow()
 			},
 		},
-
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-
-		OnStartup: myApp.OnStartup,
-
-		// BINDING - To co widzi Frontend
+		OnStartup:        myApp.OnStartup,
 		Bind: []interface{}{
-			myApp,          // Metody App (jeśli jakieś publiczne będą)
-			scannerService, // Metody Scannera (StartScan, GetFolders itp.)
+			myApp,
+			scannerService,
 			settingsService,
 		},
 	})

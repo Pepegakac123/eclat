@@ -232,7 +232,7 @@ export default function SettingsPage() {
           </p>
         </CardHeader>
         <CardBody className="px-6 py-6">
-          <div className="flex gap-2 items-stretch">
+          <div className="flex flex-row gap-2 items-stretch">
             <Input
               label="Path"
               value={pathInput}
