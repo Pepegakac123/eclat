@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"io"
 	"log"
 	"log/slog"
 	"os"
@@ -35,13 +36,26 @@ func main() {
 
 	dbFolder := filepath.Join(appCachePath, "db")
 	thumbsFolder := filepath.Join(appCachePath, "thumbnails")
+	logsFolder := filepath.Join(appCachePath, "logs")
 
-	dirsToCreate := []string{appCachePath, dbFolder, thumbsFolder}
+	dirsToCreate := []string{appCachePath, dbFolder, thumbsFolder, logsFolder}
 	for _, dir := range dirsToCreate {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Fatalf("Cannot create directory %s: %v", dir, err)
 		}
 	}
+	logFilePath := filepath.Join(logsFolder, "app.log")
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal("Failed to open log file:", err)
+	}
+	defer logFile.Close()
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	programLogger := slog.New(slog.NewTextHandler(multiWriter, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	slog.SetDefault(programLogger)
 	dbPath := filepath.Join(dbFolder, "assets.db")
 
 	db, err := sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode=WAL")
@@ -58,10 +72,9 @@ func main() {
 		log.Fatal("Failed to run migrations:", err)
 	}
 	queries := database.New(db)
-
-	thumbGen := services.NewThumbnailGenerator(thumbsFolder, slog.Default())
-	scannerService := services.NewScanner(db, queries, thumbGen)
-	settingsService := services.NewSettingsService(queries)
+	diskThumbGen := services.NewDiskThumbnailGenerator(thumbsFolder, programLogger)
+	scannerService := services.NewScanner(db, queries, diskThumbGen, programLogger)
+	settingsService := services.NewSettingsService(queries, programLogger)
 
 	myApp := app.NewApp(scannerService, settingsService)
 
@@ -88,6 +101,6 @@ func main() {
 	})
 
 	if err != nil {
-		println("Error:", err.Error())
+		programLogger.Error("Fatal Error", "error", err)
 	}
 }

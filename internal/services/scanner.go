@@ -31,14 +31,15 @@ TODO: GAP ANALYSIS - SCANNER IMPLEMENTATION
 // Scanner is a struct that keeps needed dependencies for scanning assets.
 type Scanner struct {
 	mu         sync.RWMutex
-	db         *database.Queries
+	db         database.Querier
 	conn       *sql.DB
 	logger     *slog.Logger
 	cancelFunc context.CancelFunc
 	config     *ScannerConfig
 	isScanning atomic.Bool
-	thumbGen   *ThumbnailGenerator
+	thumbGen   ThumbnailGenerator
 	ctx        context.Context
+	eventsEmit func(ctx context.Context, eventName string, optionalData ...interface{})
 }
 type ScanJob struct {
 	Path     string
@@ -57,13 +58,14 @@ func (s *Scanner) Startup(ctx context.Context) {
 }
 
 // NewScanner creates a new Scanner instance
-func NewScanner(conn *sql.DB, db *database.Queries, thumbGen *ThumbnailGenerator) *Scanner {
+func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger) *Scanner {
 	return &Scanner{
-		conn:     conn,
-		db:       db,
-		logger:   slog.Default(),
-		config:   NewScannerConfig(),
-		thumbGen: thumbGen,
+		conn:       conn,
+		db:         db,
+		logger:     logger,
+		config:     NewScannerConfig(),
+		thumbGen:   thumbGen,
+		eventsEmit: runtime.EventsEmit,
 	}
 }
 
@@ -119,7 +121,7 @@ func (s *Scanner) StartScan() error {
 			totalToProcess += s.getAllFilesCount(f)
 		}
 		s.logger.Info("Total files to scan calculated", "count", totalToProcess)
-		runtime.EventsEmit(s.ctx, "scan_progress", map[string]any{
+		s.eventsEmit(s.ctx, "scan_progress", map[string]any{
 			"current":  0,
 			"total":    totalToProcess,
 			"lastFile": "Initializing...",
@@ -148,7 +150,7 @@ func (s *Scanner) StartScan() error {
 		close(results)
 		foundOnDisk = <-collectorDone
 		s.logger.Info("Scanner finished", "total", totalToProcess)
-		runtime.EventsEmit(s.ctx, "scan_status", "idle")
+		s.eventsEmit(s.ctx, "scan_status", "idle")
 		s.logger.Info("Scan finished. Starting Cleanup phase...",
 			"db_cache_size", len(existingAssets),
 			"found_on_disk", len(foundOnDisk))
@@ -193,10 +195,9 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 		var exist database.Asset
 		var lookupErr error
 
-		if hash != "" {
+		exist, lookupErr = s.db.GetAssetByPath(ctx, job.Path)
+		if lookupErr == sql.ErrNoRows && hash != "" {
 			exist, lookupErr = s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
-		} else {
-			exist, lookupErr = s.db.GetAssetByPath(ctx, job.Path)
 		}
 
 		if lookupErr != nil && lookupErr != sql.ErrNoRows {
@@ -209,7 +210,7 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 		fileType := DetermineFileType(ext)
 
 		if exist.ID > 0 {
-			// Asset już znamy. Ale czy to ten sam? Czy zombie? Czy kopia?
+
 			s.processExistingAsset(ctx, &result, exist, job, fileType, hash)
 		} else {
 			s.processNewAsset(ctx, &result, job, fileType, hash)
@@ -330,7 +331,7 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 }
 func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-chan ScanResult) map[string]bool {
 	const batchSize = 100
-	const emitAfter = 50
+	const emitAfter = 30
 	buff := make([]ScanResult, 0, batchSize)
 	processed := make(map[string]bool)
 
@@ -378,7 +379,7 @@ func (s *Scanner) InsertAssets(ctx context.Context, buffer []ScanResult) error {
 		return err
 	}
 	defer tx.Rollback()
-	qtx := s.db.WithTx(tx)
+	qtx := database.New(tx)
 	for _, item := range buffer {
 		if item.NewAsset != nil {
 			_, err := qtx.CreateAsset(ctx, *item.NewAsset)
@@ -518,7 +519,7 @@ func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsse
 func (s *Scanner) updateAndEmitTotal(total *int, totalToProcess, emitAfter int) {
 	*total++
 	if *total%emitAfter == 0 {
-		runtime.EventsEmit(s.ctx, "scan_progress", map[string]any{
+		s.eventsEmit(s.ctx, "scan_progress", map[string]any{
 			"current": *total,
 			"total":   totalToProcess,
 		})

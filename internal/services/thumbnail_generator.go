@@ -17,7 +17,11 @@ import (
 	"github.com/google/uuid"
 )
 
-type ThumbnailGenerator struct {
+type ThumbnailGenerator interface {
+	Generate(ctx context.Context, sourcePath string) (ThumbnailResult, error)
+}
+
+type DiskThumbnailGenerator struct {
 	cacheDir       string
 	logger         *slog.Logger
 	placeholderMap map[string]string
@@ -28,8 +32,8 @@ type ThumbnailResult struct {
 	IsPlaceholder bool
 }
 
-func NewThumbnailGenerator(cacheDir string, logger *slog.Logger) *ThumbnailGenerator {
-	return &ThumbnailGenerator{
+func NewDiskThumbnailGenerator(cacheDir string, logger *slog.Logger) *DiskThumbnailGenerator {
+	return &DiskThumbnailGenerator{
 		cacheDir: cacheDir,
 		logger:   logger,
 		placeholderMap: map[string]string{
@@ -76,14 +80,14 @@ func isSupportedImageExt(ext string) bool {
 	return false
 }
 
-func (g *ThumbnailGenerator) Generate(ctx context.Context, srcPath string) (ThumbnailResult, error) {
+func (g *DiskThumbnailGenerator) Generate(ctx context.Context, srcPath string) (ThumbnailResult, error) {
 	ext := strings.ToLower(filepath.Ext(srcPath))
 	if isSupportedImageExt(ext) {
 		return g.generateFromImage(srcPath)
 	}
 	return g.getPlaceholderResult(ext), nil
 }
-func (g *ThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailResult, error) {
+func (g *DiskThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailResult, error) {
 	img, err := imaging.Open(srcPath)
 	if err != nil {
 		g.logger.Warn("Failed to decode image, using placeholder", "path", srcPath, "error", err)
@@ -121,7 +125,7 @@ func (g *ThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailResult,
 	}, nil
 }
 
-func (g *ThumbnailGenerator) extractMetadataFromImage(img image.Image) ImageMetadata {
+func (g *DiskThumbnailGenerator) extractMetadataFromImage(img image.Image) ImageMetadata {
 	bounds := img.Bounds()
 	domColorHex, err := CalculateDominantColor(img)
 	var closestColor string
@@ -158,14 +162,14 @@ func hasAlpha(img image.Image) bool {
 	return false
 }
 
-func (g *ThumbnailGenerator) getPlaceholderResult(ext string) ThumbnailResult {
+func (g *DiskThumbnailGenerator) getPlaceholderResult(ext string) ThumbnailResult {
 	return ThumbnailResult{
 		WebPath:       g.getPlaceholderPath(ext),
 		Metadata:      ImageMetadata{},
 		IsPlaceholder: true,
 	}
 }
-func (g *ThumbnailGenerator) getPlaceholderPath(ext string) string {
+func (g *DiskThumbnailGenerator) getPlaceholderPath(ext string) string {
 	const defaultPlaceholder = "generic_placeholder.webp"
 	const placeholderPrefix = "/placeholders/"
 

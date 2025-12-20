@@ -26,19 +26,32 @@ type ScanFolderDTO struct {
 	DateAdded   string  `json:"dateAdded"`   // Zmieniono z time.Time na string
 	IsDeleted   bool    `json:"isDeleted"`
 }
+type WailsRuntime interface {
+	OpenDirectoryDialog(ctx context.Context, options wailsRuntime.OpenDialogOptions) (string, error)
+}
+
+type RealWailsRuntime struct{}
+
+func (r *RealWailsRuntime) OpenDirectoryDialog(ctx context.Context, options wailsRuntime.OpenDialogOptions) (string, error) {
+	return wailsRuntime.OpenDirectoryDialog(ctx, options)
+}
 
 // SettingsService odpowiada za konfigurację aplikacji i zarządzanie biblioteką.
 type SettingsService struct {
-	ctx    context.Context
-	db     *database.Queries
-	logger *slog.Logger
+	ctx        context.Context
+	db         database.Querier
+	logger     *slog.Logger
+	eventsEmit func(ctx context.Context, eventName string, optionalData ...interface{})
+	wails      WailsRuntime
 }
 
 // NewSettingsService tworzy nową instancję serwisu.
-func NewSettingsService(db *database.Queries) *SettingsService {
+func NewSettingsService(db database.Querier, logger *slog.Logger) *SettingsService {
 	return &SettingsService{
-		db:     db,
-		logger: slog.Default(),
+		db:         db,
+		logger:     logger,
+		eventsEmit: wailsRuntime.EventsEmit,
+		wails:      &RealWailsRuntime{},
 	}
 }
 
@@ -90,7 +103,7 @@ func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (ScanFolde
 		statusMsg = "hidden"
 	}
 
-	wailsRuntime.EventsEmit(s.ctx, "toast", map[string]string{
+	s.eventsEmit(s.ctx, "toast", map[string]string{
 		"type":    "info",
 		"title":   "Folder Updated",
 		"message": fmt.Sprintf("Folder is now %s. Assets are %s.", boolToStatus(isActive), statusMsg),
@@ -129,7 +142,7 @@ func (s *SettingsService) DeleteFolder(id int64) error {
 			return fmt.Errorf("failed to move assets: %w", err)
 		}
 
-		wailsRuntime.EventsEmit(s.ctx, "toast", map[string]string{
+		s.eventsEmit(s.ctx, "toast", map[string]string{
 			"type":    "info",
 			"title":   "Assets Saved",
 			"message": fmt.Sprintf("Items moved to parent library: %s", filepath.Base(bestParent.Path)),
@@ -273,10 +286,9 @@ func (s *SettingsService) OpenFile(path string) error {
 
 // OpenFolderPicker otwiera systemowe okno, które widzi TYLKO foldery
 func (s *SettingsService) OpenFolderPicker() (string, error) {
-	selection, err := wailsRuntime.OpenDirectoryDialog(s.ctx, wailsRuntime.OpenDialogOptions{
+	selection, err := s.wails.OpenDirectoryDialog(s.ctx, wailsRuntime.OpenDialogOptions{
 		Title: "Select Library Folder",
 	})
-
 	if err != nil {
 		return "", err
 	}
