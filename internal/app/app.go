@@ -2,7 +2,8 @@ package app
 
 import (
 	"context"
-	"eclat/internal/services"
+	"eclat/internal/scanner"
+	"eclat/internal/settings"
 	"log/slog"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -12,11 +13,11 @@ import (
 type App struct {
 	ctx             context.Context
 	logger          *slog.Logger
-	Scanner         *services.Scanner
-	SettingsService *services.SettingsService
+	Scanner         *scanner.Scanner
+	SettingsService *settings.SettingsService
 }
 
-func NewApp(scanner *services.Scanner, settingsService *services.SettingsService) *App {
+func NewApp(scanner *scanner.Scanner, settingsService *settings.SettingsService) *App {
 	return &App{
 		logger:          slog.Default(),
 		Scanner:         scanner,

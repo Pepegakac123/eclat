@@ -1,9 +1,10 @@
-package services
+package settings
 
 import (
 	"context"
 	"database/sql"
 	"eclat/internal/database"
+	"eclat/internal/feedback" // Import
 	"errors"
 	"fmt"
 	"log/slog"
@@ -41,12 +42,12 @@ type SettingsService struct {
 	ctx      context.Context
 	db       database.Querier
 	logger   *slog.Logger
-	notifier Notifier
+	notifier feedback.Notifier
 	wails    WailsRuntime
 }
 
 // NewSettingsService tworzy nową instancję serwisu.
-func NewSettingsService(db database.Querier, logger *slog.Logger, notifier Notifier) *SettingsService {
+func NewSettingsService(db database.Querier, logger *slog.Logger, notifier feedback.Notifier) *SettingsService {
 	return &SettingsService{
 		db:       db,
 		logger:   logger,
@@ -103,7 +104,7 @@ func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (ScanFolde
 		statusMsg = "hidden"
 	}
 
-	s.notifier.SendToast(s.ctx, ToastField{
+	s.notifier.SendToast(s.ctx, feedback.ToastField{
 		Type:    "info",
 		Title:   "Folder Updated",
 		Message: fmt.Sprintf("Folder is now %s. Assets are %s.", boolToStatus(isActive), statusMsg),
@@ -141,7 +142,7 @@ func (s *SettingsService) DeleteFolder(id int64) error {
 		if err != nil {
 			return fmt.Errorf("failed to move assets: %w", err)
 		}
-		s.notifier.SendToast(s.ctx, ToastField{
+		s.notifier.SendToast(s.ctx, feedback.ToastField{
 			Type:    "info",
 			Title:   "Assets Saved",
 			Message: fmt.Sprintf("Items moved to parent library: %s", filepath.Base(bestParent.Path)),

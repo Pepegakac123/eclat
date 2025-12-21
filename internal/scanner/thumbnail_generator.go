@@ -1,8 +1,9 @@
-package services
+package scanner // Zmiana nazwy pakietu
 
 import (
 	"context"
-	"fmt"
+	"eclat/internal/config"
+	"fmt" // Import
 	"image"
 	"image/color"
 	"image/draw"
@@ -142,7 +143,7 @@ func (g *DiskThumbnailGenerator) extractMetadataFromThumb(thumb image.Image, ori
 		hexColor = ""
 	} else {
 		hexColor = domColorHex
-		closest, err := FindClosestPaletteColor(domColorHex, predefinedPalette)
+		closest, err := FindClosestPaletteColor(domColorHex, config.PredefinedPalette)
 		if err != nil {
 			g.logger.Debug("Failed to find closest color", "hex", hexColor, "error", err)
 		} else {

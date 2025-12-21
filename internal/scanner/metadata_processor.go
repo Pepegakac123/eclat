@@ -1,7 +1,8 @@
-package services
+package scanner
 
 import (
 	"crypto/sha256"
+	"eclat/internal/config" // Import config
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -123,7 +124,7 @@ func CalculateDominantColor(img image.Image) (string, error) {
 	return hexColor, nil
 }
 
-func FindClosestPaletteColor(hexInput string, palette []PaletteColor) (string, error) {
+func FindClosestPaletteColor(hexInput string, palette []config.PaletteColor) (string, error) {
 	inputColor, err := colorful.Hex(hexInput)
 	if err != nil {
 		return "", fmt.Errorf("invalid hex color: %w", err)

@@ -11,7 +11,9 @@ import (
 	"database/sql"
 	"eclat/internal/app"
 	"eclat/internal/database"
-	"eclat/internal/services"
+	"eclat/internal/feedback"
+	"eclat/internal/scanner"
+	"eclat/internal/settings"
 
 	"github.com/pressly/goose/v3"
 	"github.com/wailsapp/wails/v2"
@@ -72,10 +74,10 @@ func main() {
 		log.Fatal("Failed to run migrations:", err)
 	}
 	queries := database.New(db)
-	notifier := services.NewNotifier()
-	diskThumbGen := services.NewDiskThumbnailGenerator(thumbsFolder, programLogger)
-	scannerService := services.NewScanner(db, queries, diskThumbGen, programLogger, notifier)
-	settingsService := services.NewSettingsService(queries, programLogger, notifier)
+	notifier := feedback.NewNotifier()
+	diskThumbGen := scanner.NewDiskThumbnailGenerator(thumbsFolder, programLogger)
+	scannerService := scanner.NewScanner(db, queries, diskThumbGen, programLogger, notifier)
+	settingsService := settings.NewSettingsService(queries, programLogger, notifier)
 
 	myApp := app.NewApp(scannerService, settingsService)
 

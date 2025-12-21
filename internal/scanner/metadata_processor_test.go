@@ -1,6 +1,7 @@
-package services
+package scanner
 
 import (
+	"eclat/internal/config"
 	"image"
 	"testing"
 
@@ -33,7 +34,7 @@ func TestDetermineFileType(t *testing.T) {
 }
 
 func TestFindClosestPaletteColor(t *testing.T) {
-	testPalette := []PaletteColor{
+	testPalette := []config.PaletteColor{
 		{Name: "Pure Red", Hex: "#FF0000"},
 		{Name: "Pure Green", Hex: "#00FF00"},
 		{Name: "Pure Blue", Hex: "#0000FF"},

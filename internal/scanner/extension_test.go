@@ -1,15 +1,19 @@
-package services
+package scanner
 
 import (
+	"eclat/internal/config" // <-- Musimy zaimportować definicje danych
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestScanner_ExtensionLogic(t *testing.T) {
+	// Konstruujemy Scanner "na brudno" tylko do testu.
+	// Ponieważ jesteśmy w pakiecie 'scanner', mamy dostęp do prywatnego pola 'config'.
 	scanner := &Scanner{
-		config: &ScannerConfig{
+		config: &config.ScannerConfig{
 			AllowedExtensions: []string{".jpg", ".png"},
+			// MaxAllowHashFileSize: 0, // opcjonalne, w tym teście nieistotne
 		},
 	}
 
@@ -54,14 +58,18 @@ func TestScanner_ExtensionLogic(t *testing.T) {
 		err := scanner.AddExtensions([]string{".jpg", "PNG"})
 		assert.NoError(t, err)
 
+		// Sprawdzamy czy długość się nie zmieniła (bo próbowaliśmy dodać to co już jest)
 		assert.Equal(t, initialCount, len(scanner.config.AllowedExtensions), "Nie powinno dodać duplikatów")
 	})
 
 	t.Run("RemoveExtension", func(t *testing.T) {
+		// Reset stanu dla pewności
+		scanner.AddExtensions([]string{".jpg", ".png"})
 
 		scanner.RemoveExtension(".jpg")
 		assert.False(t, scanner.IsExtensionAllowed(".jpg"))
-		scanner.RemoveExtension("png")
+
+		scanner.RemoveExtension("png") // Test usuwania bez kropki
 		assert.False(t, scanner.IsExtensionAllowed(".png"))
 	})
 }

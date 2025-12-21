@@ -1,9 +1,11 @@
-package services
+package scanner
 
 import (
 	"context"
 	"database/sql"
+	"eclat/internal/config"
 	"eclat/internal/database"
+	"eclat/internal/feedback"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -14,24 +16,25 @@ import (
 	"time"
 )
 
-// Scanner is a struct that keeps needed dependencies for scanning assets.
 type Scanner struct {
 	mu         sync.RWMutex
 	db         database.Querier
 	conn       *sql.DB
 	logger     *slog.Logger
 	cancelFunc context.CancelFunc
-	config     *ScannerConfig
+	config     *config.ScannerConfig // Zmiana typu
 	isScanning atomic.Bool
 	thumbGen   ThumbnailGenerator
 	ctx        context.Context
-	notifier   Notifier
+	notifier   feedback.Notifier // Zmiana typu
 }
+
 type ScanJob struct {
 	Path     string
 	FolderId int64
 	Entry    fs.DirEntry
 }
+
 type ScanResult struct {
 	Path         string
 	Err          error
@@ -43,13 +46,12 @@ func (s *Scanner) Startup(ctx context.Context) {
 	s.ctx = ctx
 }
 
-// NewScanner creates a new Scanner instance
-func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger, notifier Notifier) *Scanner {
+func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger, notifier feedback.Notifier) *Scanner {
 	return &Scanner{
 		conn:     conn,
 		db:       db,
 		logger:   logger,
-		config:   NewScannerConfig(),
+		config:   config.NewScannerConfig(),
 		thumbGen: thumbGen,
 		notifier: notifier,
 	}
@@ -107,7 +109,7 @@ func (s *Scanner) StartScan() error {
 			totalToProcess += s.getAllFilesCount(f)
 		}
 		s.logger.Info("Total files to scan calculated", "count", totalToProcess)
-		s.notifier.SendScannerStatus(s.ctx, Status(Scanning))
+		s.notifier.SendScannerStatus(s.ctx, feedback.Scanning)
 		s.notifier.SendScanProgress(s.ctx, 0, totalToProcess, "Initializing...")
 		go func() {
 			defer close(collectorDone)
@@ -132,7 +134,7 @@ func (s *Scanner) StartScan() error {
 		close(results)
 		foundOnDisk = <-collectorDone
 		s.logger.Info("Scanner finished", "total", totalToProcess)
-		s.notifier.SendScannerStatus(s.ctx, Status(Idle))
+		s.notifier.SendScannerStatus(s.ctx, feedback.Idle)
 		s.logger.Info("Scan finished. Starting Cleanup phase...",
 			"db_cache_size", len(existingAssets),
 			"found_on_disk", len(foundOnDisk))
@@ -149,15 +151,12 @@ func (s *Scanner) StartScan() error {
 	return nil
 }
 
-// StopScan cancells active project
 func (s *Scanner) StopScan() {
 	if s.cancelFunc != nil {
-		s.cancelFunc() // Sends done() signal to goroutine
+		s.cancelFunc()
 	}
 }
 
-// Worker to główna pętla przetwarzająca zadania skanowania.
-// Działa jako orkiestrator: Hashowanie -> Lookup -> Delegacja decyzji.
 func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan ScanJob, results chan<- ScanResult) {
 	defer wg.Done()
 
@@ -192,7 +191,6 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 		fileType := DetermineFileType(ext)
 
 		if exist.ID > 0 {
-
 			s.processExistingAsset(ctx, &result, exist, job, fileType, hash)
 		} else {
 			s.processNewAsset(ctx, &result, job, fileType, hash)
@@ -202,7 +200,6 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 	}
 }
 
-// processNewAsset obsługuje proste dodawanie nowego pliku.
 func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job ScanJob, fileType, hash string) {
 	if job.Entry == nil {
 		return
@@ -219,14 +216,8 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 	}
 }
 
-// processExistingAsset to serce logiki Self-Healing.
-// Obsługuje: Zmiany nazw, Duplikaty, Przywracanie (Resurrection) i Refresh Metadanych.
 func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, exist database.Asset, job ScanJob, fileType, hash string) {
-	// SCENARIUSZ A: Ścieżki się zgadzają. To ten sam plik.
 	if exist.FilePath == job.Path {
-		// 1. Resurrection Check (Czy to Zombie?)
-		// Plik jest na dysku, ale w bazie ma flagę is_deleted.
-		// Sytuacja: Użytkownik przywrócił plik z kosza LUB odblokował rozszerzenie.
 		if exist.IsDeleted {
 			s.logger.Info("🧟 Resurrection: Restoring soft-deleted asset", "id", exist.ID, "path", job.Path)
 			if err := s.db.RestoreAsset(ctx, exist.ID); err != nil {
@@ -234,8 +225,6 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 			}
 		}
 
-		// 2. Integrity Check (Czy plik był edytowany?)
-		// Sprawdzamy daty modyfikacji.
 		info, err := job.Entry.Info()
 		if err != nil {
 			info, _ = os.Stat(job.Path)
@@ -268,22 +257,14 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 				}
 			}
 		}
-
-		// Oznaczamy jako istniejący dla Collectora (żeby Cleanup go nie usunął)
 		result.ExistingPath = exist.FilePath
 		return
 	}
 
-	// SCENARIUSZ B: Ścieżki się RÓŻNIĄ. (Move vs Copy)
-	// Hash jest ten sam, ale plik jest w innym miejscu.
-
-	// Sprawdzamy co się stało ze STARĄ lokalizacją (tą z bazy).
 	_, statErr := os.Stat(exist.FilePath)
 	oldFileMissing := os.IsNotExist(statErr)
 
 	if oldFileMissing {
-		// 1. MOVE (Przeniesienie / Zmiana nazwy)
-		// Starego nie ma, nowy jest. To ten sam byt.
 		s.logger.Info("🚚 Move/Rename Detected", "old_path", exist.FilePath, "new_path", job.Path)
 
 		err := s.db.UpdateAssetLocation(ctx, database.UpdateAssetLocationParams{
@@ -297,20 +278,15 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 			s.logger.Error("Failed to update location for moved asset", "error", err)
 			result.Err = err
 		} else {
-			// Cleanup ma w pamięci snapshot ze starą ścieżką. Musimy mu powiedzieć: "Spoko, ogarnąłem ten stary plik".
 			result.ExistingPath = exist.FilePath
 		}
 
 	} else {
-		// 2. COPY (Duplikat)
-		// Stary jest, nowy też jest. To są dwa fizyczne byty.
 		s.logger.Info("👯 Duplicate Detected (Copy)", "original_id", exist.ID, "new_copy_path", job.Path)
-
-		// Traktujemy to jako zupełnie nowy asset.
-		// TODO: W przyszłości dodamy linkowanie parent/child
 		s.processNewAsset(ctx, result, job, fileType, hash)
 	}
 }
+
 func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-chan ScanResult) map[string]bool {
 	const batchSize = 100
 	const emitAfter = 30
@@ -339,9 +315,6 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 		if result.NewAsset != nil {
 			buff = append(buff, result)
 		}
-
-		// Jeśli Worker wykrył przeniesienie, podał nam starą ścieżkę w ExistingPath.
-		// Musimy ją "odznaczyć", żeby Cleanup wiedział, że ten Asset ID (znany mu pod starą nazwą) przetrwał.
 		if result.ExistingPath != "" {
 			processed[result.ExistingPath] = true
 		} else {
@@ -355,6 +328,7 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 	flush()
 	return processed
 }
+
 func (s *Scanner) InsertAssets(ctx context.Context, buffer []ScanResult) error {
 	tx, err := s.conn.Begin()
 	if err != nil {
@@ -371,11 +345,9 @@ func (s *Scanner) InsertAssets(ctx context.Context, buffer []ScanResult) error {
 			}
 		}
 	}
-
 	return tx.Commit()
 }
 
-// Funkcja pomocnicza -
 func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string) (database.CreateAssetParams, error) {
 	thumb, err := s.thumbGen.Generate(ctx, path)
 	if err != nil {
@@ -410,7 +382,6 @@ func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry 
 	return newAsset, nil
 }
 
-// Helper function that scans a directory for files, Add them to db and updates the total count
 func (s *Scanner) scanDirectory(scanCtx context.Context, folder database.ScanFolder, jobs chan<- ScanJob) error {
 	if scanCtx.Err() != nil {
 		return scanCtx.Err()
@@ -438,12 +409,9 @@ func (s *Scanner) scanDirectory(scanCtx context.Context, folder database.ScanFol
 		}
 		select {
 		case jobs <- job:
-			// Sukces, idziemy dalej
 		case <-scanCtx.Done():
-			// Koniec zabawy, przerywamy WalkDir
 			return filepath.SkipAll
 		}
-
 		return nil
 	})
 
@@ -453,6 +421,7 @@ func (s *Scanner) scanDirectory(scanCtx context.Context, folder database.ScanFol
 	}
 	return nil
 }
+
 func (s *Scanner) getAllFilesCount(folder database.ScanFolder) int {
 	var total = 0
 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
@@ -495,7 +464,6 @@ func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsse
 	}
 	s.logger.Info("Loaded assets cache", "count", len(existing))
 	return existing, nil
-
 }
 
 func (s *Scanner) updateAndEmitTotal(total *int, totalToProcess, emitAfter int) {

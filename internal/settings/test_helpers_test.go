@@ -1,9 +1,11 @@
-package services
+package settings
 
 import (
 	"context"
 	"database/sql"
 	"eclat/internal/database"
+	"eclat/internal/feedback"
+	"eclat/internal/scanner"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,17 +21,17 @@ import (
 
 // MockNotifier - struktura pomocnicza tylko do testów
 type MockNotifier struct {
-	LastMsg   ToastField // Zapamiętujemy ostatnią wiadomość
+	LastMsg   feedback.ToastField // Zapamiętujemy ostatnią wiadomość
 	CallCount int
 	LastEvent string
 }
 
-func (m *MockNotifier) SendToast(ctx context.Context, msg ToastField) {
+func (m *MockNotifier) SendToast(ctx context.Context, msg feedback.ToastField) {
 	m.LastMsg = msg
 	m.CallCount++
 }
 
-func (m *MockNotifier) SendScannerStatus(ctx context.Context, status Status) {
+func (m *MockNotifier) SendScannerStatus(ctx context.Context, status feedback.Status) {
 	m.LastEvent = "scanner_status"
 	m.CallCount++
 }
@@ -95,7 +97,7 @@ func insertTestAsset(t *testing.T, q database.Querier, folderID int64, path, has
 	return asset
 }
 
-func setupLogicTest(t *testing.T) (*sql.DB, database.Querier, *Scanner, string) {
+func setupLogicTest(t *testing.T) (*sql.DB, database.Querier, *scanner.Scanner, string) {
 	conn, queries := setupTestDB(t) // Używamy Twojego helpera z setup_test.go
 	root := t.TempDir()
 
@@ -106,7 +108,7 @@ func setupLogicTest(t *testing.T) (*sql.DB, database.Querier, *Scanner, string) 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockThumbGen := &MockThumbnailGenerator{}
 	notifier := &MockNotifier{}
-	scanner := NewScanner(conn, queries, mockThumbGen, logger, notifier)
+	scanner := scanner.NewScanner(conn, queries, mockThumbGen, logger, notifier)
 	scanner.AddExtensions([]string{".txt", ".png"}) // Używamy prostych rozszerzeń
 	return conn, queries, scanner, root
 }
@@ -123,13 +125,13 @@ type MockThumbnailGenerator struct {
 	ShouldFail bool
 }
 
-func (m *MockThumbnailGenerator) Generate(ctx context.Context, sourcePath string) (ThumbnailResult, error) {
+func (m *MockThumbnailGenerator) Generate(ctx context.Context, sourcePath string) (scanner.ThumbnailResult, error) {
 	if m.ShouldFail {
-		return ThumbnailResult{}, fmt.Errorf("mock error generator")
+		return scanner.ThumbnailResult{}, fmt.Errorf("mock error generator")
 	}
-	return ThumbnailResult{
+	return scanner.ThumbnailResult{
 		WebPath: "/thumbnails/mock_thumb.webp",
-		Metadata: ImageMetadata{
+		Metadata: scanner.ImageMetadata{
 			Width:           1920,
 			Height:          1080,
 			DominantColor:   "#FF0000",

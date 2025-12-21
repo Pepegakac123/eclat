@@ -1,3 +1,36 @@
+export namespace config {
+	
+	export class PaletteColor {
+	    name: string;
+	    hex: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PaletteColor(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.hex = source["hex"];
+	    }
+	}
+	export class ScannerConfig {
+	    allowedExtensions: string[];
+	    maxAllowHashFileSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScannerConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.allowedExtensions = source["allowedExtensions"];
+	        this.maxAllowHashFileSize = source["maxAllowHashFileSize"];
+	    }
+	}
+
+}
+
 export namespace database {
 	
 	export class CreateAssetParams {
@@ -61,44 +94,8 @@ export namespace database {
 
 }
 
-export namespace services {
+export namespace scanner {
 	
-	export class PaletteColor {
-	    name: string;
-	    hex: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new PaletteColor(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.hex = source["hex"];
-	    }
-	}
-	export class ScanFolderDTO {
-	    id: number;
-	    path: string;
-	    isActive: boolean;
-	    lastScanned?: string;
-	    dateAdded: string;
-	    isDeleted: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new ScanFolderDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.path = source["path"];
-	        this.isActive = source["isActive"];
-	        this.lastScanned = source["lastScanned"];
-	        this.dateAdded = source["dateAdded"];
-	        this.isDeleted = source["isDeleted"];
-	    }
-	}
 	export class ScanResult {
 	    Path: string;
 	    Err: any;
@@ -135,18 +132,31 @@ export namespace services {
 		    return a;
 		}
 	}
-	export class ScannerConfig {
-	    allowedExtensions: string[];
-	    maxAllowHashFileSize: number;
+
+}
+
+export namespace settings {
+	
+	export class ScanFolderDTO {
+	    id: number;
+	    path: string;
+	    isActive: boolean;
+	    lastScanned?: string;
+	    dateAdded: string;
+	    isDeleted: boolean;
 	
 	    static createFrom(source: any = {}) {
-	        return new ScannerConfig(source);
+	        return new ScanFolderDTO(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.allowedExtensions = source["allowedExtensions"];
-	        this.maxAllowHashFileSize = source["maxAllowHashFileSize"];
+	        this.id = source["id"];
+	        this.path = source["path"];
+	        this.isActive = source["isActive"];
+	        this.lastScanned = source["lastScanned"];
+	        this.dateAdded = source["dateAdded"];
+	        this.isDeleted = source["isDeleted"];
 	    }
 	}
 

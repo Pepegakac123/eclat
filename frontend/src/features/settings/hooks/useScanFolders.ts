@@ -6,7 +6,7 @@ import {
   ValidatePath,
   OpenInExplorer,
   OpenFolderPicker,
-} from "@wailsjs/go/services/SettingsService";
+} from "@wailsjs/go/settings/SettingsService";
 
 import {
   GetConfig,
@@ -14,7 +14,7 @@ import {
   RemoveExtension,
   GetPredefinedPalette,
   StartScan,
-} from "@wailsjs/go/services/Scanner";
+} from "@wailsjs/go/scanner/Scanner";
 
 import { addToast } from "@heroui/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
