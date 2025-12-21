@@ -93,68 +93,74 @@ func (g *DiskThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailRes
 		g.logger.Warn("Failed to decode image, using placeholder", "path", srcPath, "error", err)
 		return g.getPlaceholderResult(filepath.Ext(srcPath)), nil
 	}
-	metadata := g.extractMetadataFromImage(img)
+	originalBounds := img.Bounds()
+	hasAlphaChannel := hasAlpha(img)
+	bitDepth := GetBitDepth(img)
 	thumb := imaging.Resize(img, 400, 0, imaging.Lanczos)
-	// 2. Konwersja na RGBA (Wymagana przez enkoder WebP)
+
+	imgMetadata := g.extractMetadataFromThumb(thumb, originalBounds, bitDepth, hasAlphaChannel)
+
 	bounds := thumb.Bounds()
 	imgRGBA := image.NewRGBA(bounds)
 	draw.Draw(imgRGBA, bounds, thumb, bounds.Min, draw.Src)
 
-	// 3. Generowanie miniatury
 	id := uuid.New()
 	filename := fmt.Sprintf("%s.webp", id.String())
 	fullDestPath := filepath.Join(g.cacheDir, filename)
+
 	outFile, err := os.Create(fullDestPath)
 	if err != nil {
-		return ThumbnailResult{}, fmt.Errorf("nie udało się utworzyć pliku wyjściowego: %w", err)
+		return ThumbnailResult{}, fmt.Errorf("nie udało się utworzyć pliku: %w", err)
 	}
 	defer outFile.Close()
 
 	err = webp.Encode(outFile, imgRGBA, &webp.Options{
 		Lossless: false,
-		Quality:  90,
+		Quality:  80,
 	})
 	if err != nil {
-		return ThumbnailResult{}, fmt.Errorf("nie udało się utworzyć pliku wyjściowego: %w", err)
+		return ThumbnailResult{}, fmt.Errorf("błąd encode webp: %w", err)
 	}
 
 	return ThumbnailResult{
-		WebPath:       fullDestPath, // Pełna ścieżka dla Wailsa
-		Metadata:      metadata,
+		WebPath:       fullDestPath,
+		Metadata:      imgMetadata,
 		IsPlaceholder: false,
 	}, nil
 }
 
-func (g *DiskThumbnailGenerator) extractMetadataFromImage(img image.Image) ImageMetadata {
-	bounds := img.Bounds()
-	domColorHex, err := CalculateDominantColor(img)
+func (g *DiskThumbnailGenerator) extractMetadataFromThumb(thumb image.Image, origBounds image.Rectangle, bitDepth int, hasAlpha bool) ImageMetadata {
+
+	domColorHex, err := CalculateDominantColor(thumb)
+
 	var closestColor string
 	var hexColor string
+
 	if err != nil {
-		g.logger.Warn("Skipping color analysis", "reason", err)
+
+		g.logger.Debug("Skipping color analysis", "reason", err)
 		hexColor = ""
 	} else {
-
 		hexColor = domColorHex
 		closest, err := FindClosestPaletteColor(domColorHex, predefinedPalette)
 		if err != nil {
-			g.logger.Warn("Failed to find closest color", "hex", hexColor, "error", err)
+			g.logger.Debug("Failed to find closest color", "hex", hexColor, "error", err)
 		} else {
 			closestColor = closest
 		}
 	}
+
 	meta := ImageMetadata{
-		Width:           bounds.Dx(),
-		Height:          bounds.Dy(),
+		Width:           origBounds.Dx(),
+		Height:          origBounds.Dy(),
 		DominantColor:   closestColor,
-		BitDepth:        GetBitDepth(img),
-		HasAlphaChannel: hasAlpha(img),
+		BitDepth:        bitDepth,
+		HasAlphaChannel: hasAlpha,
 	}
 	return meta
 }
 
 func hasAlpha(img image.Image) bool {
-	// Prosta heurystyka bazująca na modelu kolorów
 	switch img.ColorModel() {
 	case color.RGBAModel, color.NRGBAModel, color.AlphaModel, color.Alpha16Model, color.NYCbCrAModel:
 		return true

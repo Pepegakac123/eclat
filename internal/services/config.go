@@ -46,7 +46,7 @@ func NewScannerConfig() *ScannerConfig {
 
 	return &ScannerConfig{
 		AllowedExtensions:    exts,
-		MaxAllowHashFileSize: 1024 * 1024 * 10, // 10MB
+		MaxAllowHashFileSize: 1024 * 1024 * 256, //
 	}
 }
 
