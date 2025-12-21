@@ -12,21 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
-
-/*
-TODO: GAP ANALYSIS - SCANNER IMPLEMENTATION
-
-3. WYDAJNOŚĆ I CONCURRENCY:
-   - [ ] Worker Pool: Zastąpienie sekwencyjnego `WalkDir` wzorcem Producer-Consumer.
-         (WalkDir wrzuca ścieżki na kanał -> N gorutyn przetwarza pliki równolegle).
-   - [ ] Batch Insert: Zbieranie wyników i zapisywanie do DB w transakcjach po 100-500 sztuk (znacznie szybsze niż pojedyncze INSERT).
-
-4. UI FEEDBACK:
-   - [ ] Progress Throttling: Wysyłanie eventów do UI nie częściej niż co X milisekund (aby nie zamrozić Frontendu).
-*/
 
 // Scanner is a struct that keeps needed dependencies for scanning assets.
 type Scanner struct {
@@ -39,7 +25,7 @@ type Scanner struct {
 	isScanning atomic.Bool
 	thumbGen   ThumbnailGenerator
 	ctx        context.Context
-	eventsEmit func(ctx context.Context, eventName string, optionalData ...interface{})
+	notifier   Notifier
 }
 type ScanJob struct {
 	Path     string
@@ -58,14 +44,14 @@ func (s *Scanner) Startup(ctx context.Context) {
 }
 
 // NewScanner creates a new Scanner instance
-func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger) *Scanner {
+func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger, notifier Notifier) *Scanner {
 	return &Scanner{
-		conn:       conn,
-		db:         db,
-		logger:     logger,
-		config:     NewScannerConfig(),
-		thumbGen:   thumbGen,
-		eventsEmit: runtime.EventsEmit,
+		conn:     conn,
+		db:       db,
+		logger:   logger,
+		config:   NewScannerConfig(),
+		thumbGen: thumbGen,
+		notifier: notifier,
 	}
 }
 
@@ -121,11 +107,8 @@ func (s *Scanner) StartScan() error {
 			totalToProcess += s.getAllFilesCount(f)
 		}
 		s.logger.Info("Total files to scan calculated", "count", totalToProcess)
-		s.eventsEmit(s.ctx, "scan_progress", map[string]any{
-			"current":  0,
-			"total":    totalToProcess,
-			"lastFile": "Initializing...",
-		})
+		s.notifier.SendScannerStatus(s.ctx, Status(Scanning))
+		s.notifier.SendScanProgress(s.ctx, 0, totalToProcess, "Initializing...")
 		go func() {
 			defer close(collectorDone)
 			foundOnDisk = s.Collector(scanCtx, totalToProcess, results)
@@ -135,7 +118,6 @@ func (s *Scanner) StartScan() error {
 			workersWg.Add(1)
 			go s.Worker(scanCtx, &workersWg, jobs, results)
 		}
-		// TODO:Implementacja pętli po folderach i WalkDir
 		for _, f := range folders {
 			if scanCtx.Err() != nil {
 				break
@@ -150,7 +132,7 @@ func (s *Scanner) StartScan() error {
 		close(results)
 		foundOnDisk = <-collectorDone
 		s.logger.Info("Scanner finished", "total", totalToProcess)
-		s.eventsEmit(s.ctx, "scan_status", "idle")
+		s.notifier.SendScannerStatus(s.ctx, Status(Idle))
 		s.logger.Info("Scan finished. Starting Cleanup phase...",
 			"db_cache_size", len(existingAssets),
 			"found_on_disk", len(foundOnDisk))
@@ -519,9 +501,6 @@ func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsse
 func (s *Scanner) updateAndEmitTotal(total *int, totalToProcess, emitAfter int) {
 	*total++
 	if *total%emitAfter == 0 {
-		s.eventsEmit(s.ctx, "scan_progress", map[string]any{
-			"current": *total,
-			"total":   totalToProcess,
-		})
+		s.notifier.SendScanProgress(s.ctx, *total, totalToProcess, "")
 	}
 }

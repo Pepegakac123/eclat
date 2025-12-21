@@ -22,8 +22,8 @@ type ScanFolderDTO struct {
 	ID          int64   `json:"id"`
 	Path        string  `json:"path"`
 	IsActive    bool    `json:"isActive"`
-	LastScanned *string `json:"lastScanned"` // Zmieniono z *time.Time na *string
-	DateAdded   string  `json:"dateAdded"`   // Zmieniono z time.Time na string
+	LastScanned *string `json:"lastScanned"`
+	DateAdded   string  `json:"dateAdded"`
 	IsDeleted   bool    `json:"isDeleted"`
 }
 type WailsRuntime interface {
@@ -38,20 +38,20 @@ func (r *RealWailsRuntime) OpenDirectoryDialog(ctx context.Context, options wail
 
 // SettingsService odpowiada za konfigurację aplikacji i zarządzanie biblioteką.
 type SettingsService struct {
-	ctx        context.Context
-	db         database.Querier
-	logger     *slog.Logger
-	eventsEmit func(ctx context.Context, eventName string, optionalData ...interface{})
-	wails      WailsRuntime
+	ctx      context.Context
+	db       database.Querier
+	logger   *slog.Logger
+	notifier Notifier
+	wails    WailsRuntime
 }
 
 // NewSettingsService tworzy nową instancję serwisu.
-func NewSettingsService(db database.Querier, logger *slog.Logger) *SettingsService {
+func NewSettingsService(db database.Querier, logger *slog.Logger, notifier Notifier) *SettingsService {
 	return &SettingsService{
-		db:         db,
-		logger:     logger,
-		eventsEmit: wailsRuntime.EventsEmit,
-		wails:      &RealWailsRuntime{},
+		db:       db,
+		logger:   logger,
+		notifier: notifier,
+		wails:    &RealWailsRuntime{},
 	}
 }
 
@@ -103,10 +103,10 @@ func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (ScanFolde
 		statusMsg = "hidden"
 	}
 
-	s.eventsEmit(s.ctx, "toast", map[string]string{
-		"type":    "info",
-		"title":   "Folder Updated",
-		"message": fmt.Sprintf("Folder is now %s. Assets are %s.", boolToStatus(isActive), statusMsg),
+	s.notifier.SendToast(s.ctx, ToastField{
+		Type:    "info",
+		Title:   "Folder Updated",
+		Message: fmt.Sprintf("Folder is now %s. Assets are %s.", boolToStatus(isActive), statusMsg),
 	})
 	updatedFolder, err := s.db.GetScanFolderById(s.ctx, id)
 	if err != nil {
@@ -141,12 +141,12 @@ func (s *SettingsService) DeleteFolder(id int64) error {
 		if err != nil {
 			return fmt.Errorf("failed to move assets: %w", err)
 		}
-
-		s.eventsEmit(s.ctx, "toast", map[string]string{
-			"type":    "info",
-			"title":   "Assets Saved",
-			"message": fmt.Sprintf("Items moved to parent library: %s", filepath.Base(bestParent.Path)),
+		s.notifier.SendToast(s.ctx, ToastField{
+			Type:    "info",
+			Title:   "Assets Saved",
+			Message: fmt.Sprintf("Items moved to parent library: %s", filepath.Base(bestParent.Path)),
 		})
+
 	}
 	return s.db.SoftDeleteScanFolder(s.ctx, id)
 }

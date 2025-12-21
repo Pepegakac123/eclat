@@ -24,6 +24,7 @@ import { useScanFolders } from "./hooks/useScanFolders";
 import { useScanProgress } from "./hooks/useScanProgress";
 import { addToast } from "@heroui/toast";
 import { EventsOn, OnFileDrop } from "@wailsjs/runtime/runtime";
+import { useToastListener } from "@/hooks/useToastListener";
 
 export default function SettingsPage() {
   const {
@@ -49,20 +50,10 @@ export default function SettingsPage() {
     "valid" | "invalid" | "idle"
   >("idle");
   const [backendError, setBackendError] = useState<string>("");
-  const { isScanning, progress } = useScanProgress();
+  const { isScanning, progress, message } = useScanProgress();
 
   // --- GLOBAL TOAST LISTENER ---
-  useEffect(() => {
-    const stopToast = EventsOn("toast", (data: any) => {
-      addToast({
-        title: data.title,
-        description: data.message,
-        color: data.type === "error" ? "danger" : data.type,
-        timeout: 4000,
-      });
-    });
-    return () => stopToast();
-  }, []);
+  useToastListener();
 
   const handleValidate = useCallback(
     async (pathToCheck?: string) => {
@@ -184,7 +175,7 @@ export default function SettingsPage() {
                     isScanning ? "text-success" : "text-default-400"
                   }`}
                 >
-                  {isScanning ? "RUNNING" : "IDLE"}
+                  <span>{message}</span>
                 </span>
 
                 {isScanning && (

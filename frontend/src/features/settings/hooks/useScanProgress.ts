@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import { EventsOn } from "@wailsjs/runtime/runtime";
 
+// Odzwierciedlenie ScanProgressDTO z Go
+export interface ScanProgressData {
+  current: number;
+  total: number;
+  lastFile: string;
+}
+
 interface ScanState {
   isScanning: boolean;
   progress: number;
@@ -19,31 +26,32 @@ export const useScanProgress = () => {
   });
 
   useEffect(() => {
-    // 1. Status Skanera (Start/Stop)
+    // 1. Status Skanera
     const stopStatus = EventsOn("scan_status", (status: string) => {
       const isScanning = status === "scanning";
       setScanState((prev) => ({
         ...prev,
         isScanning: isScanning,
         message: isScanning ? "Scanning..." : "Idle",
-        progress: isScanning ? prev.progress : 100, // 100% na koniec
+        progress: isScanning ? prev.progress : 100,
       }));
     });
 
-    // 2. Postęp Skanowania (Co 10 plików)
-    const stopProgress = EventsOn("scan_progress", (data: any) => {
-      // data = {current, total, lastFile}
-      const percent = data.total > 0 ? (data.current / data.total) * 100 : 0;
+    // 2. Postęp Skanowania - Odbieramy obiekt ScanProgressData
+    const stopProgress = EventsOn("scan_progress", (data: ScanProgressData) => {
+      // Obliczanie procentów (zabezpieczenie przed dzieleniem przez 0)
+      const percent =
+        data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+
       setScanState({
         isScanning: true,
         current: data.current,
         total: data.total,
-        message: `Scanning: ${data.lastFile}`,
+        message: `Processing: ${data.lastFile}`, // Krótszy tekst
         progress: percent,
       });
     });
 
-    // Cleanup przy odmontowaniu komponentu
     return () => {
       stopStatus();
       stopProgress();

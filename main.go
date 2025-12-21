@@ -72,9 +72,10 @@ func main() {
 		log.Fatal("Failed to run migrations:", err)
 	}
 	queries := database.New(db)
+	notifier := services.NewNotifier()
 	diskThumbGen := services.NewDiskThumbnailGenerator(thumbsFolder, programLogger)
-	scannerService := services.NewScanner(db, queries, diskThumbGen, programLogger)
-	settingsService := services.NewSettingsService(queries, programLogger)
+	scannerService := services.NewScanner(db, queries, diskThumbGen, programLogger, notifier)
+	settingsService := services.NewSettingsService(queries, programLogger, notifier)
 
 	myApp := app.NewApp(scannerService, settingsService)
 

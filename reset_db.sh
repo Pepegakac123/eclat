@@ -4,6 +4,7 @@
 CACHE_DIR="$HOME/.cache/eclat"
 DB_FILE="$CACHE_DIR/db/assets.db"
 THUMBS_DIR="$CACHE_DIR/thumbnails"
+LOGS_DIR="$CACHE_DIR/logs"
 
 echo "☢️  ROZPOCZYNAM CZYSZCZENIE ECLAT ☢️"
 
@@ -17,6 +18,10 @@ fi
 if [ -d "$THUMBS_DIR" ]; then
     rm -rf "$THUMBS_DIR"/*
     echo "✅ Miniatury wyczyszczone."
+fi
+if [ -d "$LOGS_DIR" ]; then
+    rm -rf "$LOGS_DIR"/*
+    echo "✅ Logi wyczyszczone."
 fi
 
 echo "✨ Gotowe! Uruchom 'wails dev' aby stworzyć czystą bazę."

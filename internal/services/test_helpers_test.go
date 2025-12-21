@@ -17,6 +17,28 @@ import (
 	_ "modernc.org/sqlite" // Driver
 )
 
+// MockNotifier - struktura pomocnicza tylko do testów
+type MockNotifier struct {
+	LastMsg   ToastField // Zapamiętujemy ostatnią wiadomość
+	CallCount int
+	LastEvent string
+}
+
+func (m *MockNotifier) SendToast(ctx context.Context, msg ToastField) {
+	m.LastMsg = msg
+	m.CallCount++
+}
+
+func (m *MockNotifier) SendScannerStatus(ctx context.Context, status Status) {
+	m.LastEvent = "scanner_status"
+	m.CallCount++
+}
+
+func (m *MockNotifier) SendScanProgress(ctx context.Context, current, total int, message string) {
+	m.LastEvent = "scan_progress"
+	m.CallCount++
+}
+
 // setupTestDB - Wersja PRO z Goose
 func setupTestDB(t *testing.T) (*sql.DB, database.Querier) {
 	// 1. Connection String (z fixem na czas)
@@ -83,12 +105,9 @@ func setupLogicTest(t *testing.T) (*sql.DB, database.Querier, *Scanner, string) 
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockThumbGen := &MockThumbnailGenerator{}
-	scanner := NewScanner(conn, queries, mockThumbGen, logger)
+	notifier := &MockNotifier{}
+	scanner := NewScanner(conn, queries, mockThumbGen, logger, notifier)
 	scanner.AddExtensions([]string{".txt", ".png"}) // Używamy prostych rozszerzeń
-
-	// Mock emitera
-	scanner.eventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {}
-
 	return conn, queries, scanner, root
 }
 

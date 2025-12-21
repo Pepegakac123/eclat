@@ -29,8 +29,9 @@ func (m *MockWailsRuntime) OpenDirectoryDialog(ctx context.Context, options wail
 }
 
 func TestSettings_ValidatePath(t *testing.T) {
+	mockNotifier := &MockNotifier{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewSettingsService(nil, logger)
+	svc := NewSettingsService(nil, logger, mockNotifier)
 
 	t.Run("Should return true for existing directory", func(t *testing.T) {
 		tempDir := t.TempDir()
@@ -57,12 +58,10 @@ func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
 	// 1. Setup - używamy _ dla nieużywanego conn, żeby uniknąć błędu kompilacji
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewSettingsService(queries, logger)
+	mockNotifier := &MockNotifier{}
+	svc := NewSettingsService(queries, logger, mockNotifier)
 	ctx := context.Background()
 	svc.Startup(ctx)
-
-	// Mockowanie logiki Wailsa
-	svc.eventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {}
 
 	// Przygotowanie testowej ścieżki
 	folderPath := t.TempDir()
@@ -117,7 +116,8 @@ func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
 
 func TestSettings_FolderPicker_Mock(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewSettingsService(nil, logger)
+	mockNotifier := &MockNotifier{}
+	svc := NewSettingsService(nil, logger, mockNotifier)
 
 	t.Run("Successful Selection", func(t *testing.T) {
 		mockPath := "/fake/path/to/library"
@@ -132,7 +132,8 @@ func TestSettings_FolderPicker_Mock(t *testing.T) {
 func TestSettings_FindBestParent_Logic(t *testing.T) {
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewSettingsService(queries, logger)
+	mockNotifier := &MockNotifier{}
+	svc := NewSettingsService(queries, logger, mockNotifier)
 	ctx := context.Background()
 	svc.Startup(ctx)
 
@@ -154,7 +155,8 @@ func TestSettings_FindBestParent_Logic(t *testing.T) {
 	})
 }
 func TestSettings_MapToDTO_Scenarios(t *testing.T) {
-	svc := NewSettingsService(nil, nil)
+	mockNotifier := &MockNotifier{}
+	svc := NewSettingsService(nil, nil, mockNotifier)
 
 	t.Run("Map with LastScanned NULL", func(t *testing.T) {
 		f := database.ScanFolder{LastScanned: sql.NullTime{Valid: false}, DateAdded: time.Now()}
@@ -177,10 +179,9 @@ func TestSettings_UpdateFolderStatus_Logic(t *testing.T) {
 	folderID := folders[0].ID
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewSettingsService(queries, logger)
+	mockNotifier := &MockNotifier{}
+	svc := NewSettingsService(queries, logger, mockNotifier)
 	svc.Startup(ctx)
-	svc.eventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {}
-
 	path := filepath.Join(root, "test.png")
 	createDummyFile(t, path)
 	insertTestAsset(t, queries, folderID, path, "hash123")
