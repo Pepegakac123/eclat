@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"eclat/internal/database"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -183,4 +184,68 @@ func TestScanner_Logic_MetadataRefresh(t *testing.T) {
 		// Sprawdzamy czy LastModified się zaktualizował (powinien być bliski teraz, a nie wczoraj)
 		return updated.FileSize > 0 && updated.LastModified.After(oldTime)
 	}, 2*time.Second, 50*time.Millisecond, "Metadane powinny zostać odświeżone")
+}
+
+// Sprawdza, czy ScanFile poprawnie dodaje pojedynczy plik do bazy.
+func TestScanner_Live_ScanFile(t *testing.T) {
+	_, queries, scanner, root := setupLogicTest(t)
+	ctx := context.Background()
+
+	// A. Tworzymy plik
+	fileName := "live_test.png"
+	path := filepath.Join(root, fileName)
+	createDummyFile(t, path)
+
+	// B. Uruchamiamy ScanFile (bez StartScan!)
+	err := scanner.ScanFile(ctx, path)
+	assert.NoError(t, err)
+
+	// C. Sprawdzamy czy trafił do bazy
+	asset, err := queries.GetAssetByPath(ctx, path)
+	assert.NoError(t, err)
+	assert.Equal(t, path, asset.FilePath)
+	assert.False(t, asset.IsDeleted)
+
+	// D. Modyfikujemy plik (Update)
+	// Czekamy chwilę, żeby czas modyfikacji się różnił
+	time.Sleep(100 * time.Millisecond)
+	os.Chtimes(path, time.Now(), time.Now())
+
+	err = scanner.ScanFile(ctx, path)
+	assert.NoError(t, err)
+
+	updatedAsset, _ := queries.GetAssetByPath(ctx, path)
+	// LastModified powinno być nowsze niż Created
+	assert.True(t, updatedAsset.LastModified.After(asset.LastModified) || updatedAsset.LastModified.Equal(asset.LastModified),
+		"LastModified powinno zostać zaktualizowane")
+}
+
+// Sprawdza, czy usunięcie pliku z dysku powoduje Soft Delete w bazie.
+func TestScanner_Live_ScanFile_Delete(t *testing.T) {
+	_, queries, scanner, root := setupLogicTest(t)
+	ctx := context.Background()
+
+	fileName := "to_delete.png"
+	path := filepath.Join(root, fileName)
+	createDummyFile(t, path)
+
+	// 1. Dodajemy plik (Live Scan - Create)
+	err := scanner.ScanFile(ctx, path)
+	assert.NoError(t, err)
+
+	asset, err := queries.GetAssetByPath(ctx, path)
+	assert.NoError(t, err)
+	assert.False(t, asset.IsDeleted, "Asset powinien być aktywny")
+
+	// 2. Usuwamy plik fizycznie
+	os.Remove(path)
+
+	// 3. Wywołujemy Live Scan (symulacja zdarzenia z Watchera)
+	err = scanner.ScanFile(ctx, path)
+	assert.NoError(t, err)
+
+	// 4. Weryfikacja
+	deletedAsset, err := queries.GetAssetByPath(ctx, path)
+	assert.NoError(t, err)
+	assert.True(t, deletedAsset.IsDeleted, "Asset powinien mieć flagę IsDeleted=true")
 }

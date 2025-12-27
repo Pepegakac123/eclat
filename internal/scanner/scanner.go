@@ -373,6 +373,9 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 	defer tx.Rollback()
 
 	qtx := database.New(tx)
+	if len(buffer) == 0 {
+		return nil
+	}
 
 	for _, item := range buffer {
 		// 1. INSERT
@@ -394,7 +397,17 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	notifyCtx := ctx
+	if s.ctx != nil {
+		notifyCtx = s.ctx
+	}
+
+	s.notifier.EmitAssetsChanged(notifyCtx)
+
+	return nil
 }
 
 func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string) (database.CreateAssetParams, error) {
@@ -480,31 +493,29 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 		return nil
 	}
 
-	info, err := os.Stat(path)
-	if err != nil {
-		s.logger.Warn("File disappeared during live scan", "path", path, "error", err)
+	info, statErr := os.Stat(path)
+	fileExists := statErr == nil
+	fileMissing := os.IsNotExist(statErr)
+	asset, dbErr := s.db.GetAssetByPath(ctx, path)
+	isKnown := dbErr == nil && asset.ID > 0
+	// --- SCENARIUSZ 1: USUWANIE (Live Delete) ---
+	if fileMissing {
+		if isKnown && !asset.IsDeleted {
+			s.logger.Info("🗑️ Soft Deleting asset", "path", path)
+			return s.db.SoftDeleteAsset(ctx, asset.ID)
+		}
 		return nil
 	}
-
+	if !fileExists {
+		s.logger.Warn("File access error during live scan", "path", path, "error", statErr)
+		return nil
+	}
 	hash, err := CalculateFileHash(path, s.config.MaxAllowHashFileSize)
 	if err != nil {
 		s.logger.Warn("Hashing failed (likely locked or too big)", "error", err)
 	}
 
 	result := ScanResult{Path: path}
-
-	var exist database.Asset
-	var lookupErr error
-
-	exist, lookupErr = s.db.GetAssetByPath(ctx, path)
-	if lookupErr == sql.ErrNoRows && hash != "" {
-		exist, lookupErr = s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
-	}
-
-	if lookupErr != nil && lookupErr != sql.ErrNoRows {
-		s.logger.Error("DB Lookup Error", "error", lookupErr)
-		return lookupErr
-	}
 
 	folderID, err := s.resolveFolderID(ctx, path)
 	if err != nil {
@@ -520,16 +531,24 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 		Entry:    fileInfoEntry{info: info}, // <--- TU JEST MAGIA ADAPTERA
 	}
 
-	// 7. Logika Biznesowa (Reuse)
-	if exist.ID > 0 {
+	if isKnown {
 		// Update / Move / Resurrect
-		s.processExistingAsset(ctx, &result, exist, job, fileType, hash)
+		s.processExistingAsset(ctx, &result, asset, job, fileType, hash)
 	} else {
 		// Insert
-		s.processNewAsset(ctx, &result, job, fileType, hash)
+		// Próbujemy jeszcze znaleźć po hashu (może to rename/move, którego nie złapaliśmy po ścieżce)
+		if hash != "" {
+			existingByHash, err := s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
+			if err == nil && existingByHash.ID > 0 {
+				s.processExistingAsset(ctx, &result, existingByHash, job, fileType, hash)
+			} else {
+				s.processNewAsset(ctx, &result, job, fileType, hash)
+			}
+		} else {
+			s.processNewAsset(ctx, &result, job, fileType, hash)
+		}
 	}
 
-	// 8. Zapis do bazy (Atomic Commit)
 	if result.NewAsset != nil || result.ModifiedAsset != nil {
 		return s.ApplyBatch(ctx, []ScanResult{result})
 	}

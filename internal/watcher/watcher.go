@@ -209,16 +209,30 @@ func (s *Service) triggerDebounce(path string) {
 		s.mu.Lock()
 		delete(s.timers, path)
 		s.mu.Unlock()
+		_, err := os.Stat(path)
 
-		if _, err := os.Stat(path); err == nil {
-			s.logger.Info("🎯 File ready for scan", "path", path)
-			select {
-			case s.Events <- path:
-			default:
-				s.logger.Warn("Watcher channel full", "path", path)
-			}
+		// Scenariusz A: Plik istnieje (Create/Write/Rename-Target)
+		if err == nil {
+			s.logger.Info(" File ready for scan", "path", path)
+			s.sendEvent(path)
+			return
+		}
+
+		// Scenariusz B: Plik NIE istnieje (Delete/Rename-Source)
+		if os.IsNotExist(err) {
+			s.logger.Info("File deletion detected", "path", path)
+			s.sendEvent(path)
+			return
 		}
 	})
+}
+
+func (s *Service) sendEvent(path string) {
+	select {
+	case s.Events <- path:
+	default:
+		s.logger.Warn("Watcher channel full", "path", path)
+	}
 }
 
 func (s *Service) isDir(path string) bool {

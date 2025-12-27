@@ -32,6 +32,7 @@ type Notifier interface {
 	SendToast(ctx context.Context, msg ToastField)
 	SendScanProgress(ctx context.Context, current, total int, lastFile string)
 	SendScannerStatus(ctx context.Context, status Status)
+	EmitAssetsChanged(ctx context.Context)
 }
 
 // NewNotifier tworzy nową instancję Notifier.
@@ -58,4 +59,7 @@ func (n *WailsNotifier) SendScanProgress(ctx context.Context, current, total int
 		LastFile: lastFile,
 	}
 	runtime.EventsEmit(ctx, "scan_progress", payload)
+}
+func (n *WailsNotifier) EmitAssetsChanged(ctx context.Context) {
+	runtime.EventsEmit(ctx, "assets:changed", "refresh")
 }

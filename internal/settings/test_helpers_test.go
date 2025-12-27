@@ -40,6 +40,10 @@ func (m *MockNotifier) SendScanProgress(ctx context.Context, current, total int,
 	m.LastEvent = "scan_progress"
 	m.CallCount++
 }
+func (m *MockNotifier) EmitAssetsChanged(ctx context.Context) {
+	m.LastEvent = "assets:changed"
+	m.CallCount++
+}
 
 // setupTestDB - Wersja PRO z Goose
 func setupTestDB(t *testing.T) (*sql.DB, database.Querier) {
