@@ -6,11 +6,13 @@ import (
 	"eclat/internal/config"
 	"eclat/internal/database"
 	"eclat/internal/feedback"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
 	goRuntime "runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,10 +45,23 @@ type ScanResult struct {
 	ExistingPath  string
 }
 
+// fileInfoEntry to adapter, który pozwala użyć fs.FileInfo jako fs.DirEntry
+type fileInfoEntry struct {
+	info fs.FileInfo
+}
+
+func (e fileInfoEntry) Name() string               { return e.info.Name() }
+func (e fileInfoEntry) IsDir() bool                { return e.info.IsDir() }
+func (e fileInfoEntry) Type() fs.FileMode          { return e.info.Mode().Type() }
+func (e fileInfoEntry) Info() (fs.FileInfo, error) { return e.info, nil }
+
 func (s *Scanner) Startup(ctx context.Context) {
 	s.ctx = ctx
 }
-
+func (s *Scanner) Shutdown() {
+	s.logger.Info("🛑 Stopping Scanner...")
+	s.StopScan()
+}
 func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger, notifier feedback.Notifier) *Scanner {
 	return &Scanner{
 		conn:     conn,
@@ -361,6 +376,9 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 	defer tx.Rollback()
 
 	qtx := database.New(tx)
+	if len(buffer) == 0 {
+		return nil
+	}
 
 	for _, item := range buffer {
 		// 1. INSERT
@@ -382,7 +400,17 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	notifyCtx := ctx
+	if s.ctx != nil {
+		notifyCtx = s.ctx
+	}
+
+	s.notifier.EmitAssetsChanged(notifyCtx)
+
+	return nil
 }
 
 func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string) (database.CreateAssetParams, error) {
@@ -459,6 +487,121 @@ func (s *Scanner) scanDirectory(scanCtx context.Context, folder database.ScanFol
 	return nil
 }
 
+// ScanFile przetwarza pojedynczy plik zgłoszony przez Watchera
+func (s *Scanner) ScanFile(ctx context.Context, path string) error {
+	s.logger.Info("⚡ Live Scan triggered", "path", path)
+
+	ext := filepath.Ext(path)
+	if !s.IsExtensionAllowed(ext) {
+		return nil
+	}
+
+	info, statErr := os.Stat(path)
+	fileExists := statErr == nil
+	fileMissing := os.IsNotExist(statErr)
+	asset, dbErr := s.db.GetAssetByPath(ctx, path)
+	isKnown := dbErr == nil && asset.ID > 0
+	// --- SCENARIUSZ 1: USUWANIE (Live Delete) ---
+	if fileMissing {
+		if isKnown && !asset.IsDeleted {
+			s.logger.Info("🗑️ Soft Deleting asset", "path", path)
+			return s.db.SoftDeleteAsset(ctx, asset.ID)
+		}
+		return nil
+	}
+	if !fileExists {
+		s.logger.Warn("File access error during live scan", "path", path, "error", statErr)
+		return nil
+	}
+	hash, err := CalculateFileHash(path, s.config.MaxAllowHashFileSize)
+	if err != nil {
+		s.logger.Warn("Hashing failed (likely locked or too big)", "error", err)
+	}
+
+	result := ScanResult{Path: path}
+
+	folderID, err := s.resolveFolderID(ctx, path)
+	if err != nil {
+		s.logger.Warn("Could not resolve ScanFolder ID for file", "path", path)
+		// Kontynuujemy z folderID = 0 (baza obsłuży to jako NULL)
+	}
+
+	// 6. Przygotowanie Joba z Adapterem!
+	fileType := DetermineFileType(ext)
+	job := ScanJob{
+		Path:     path,
+		FolderId: folderID,
+		Entry:    fileInfoEntry{info: info}, // <--- TU JEST MAGIA ADAPTERA
+	}
+
+	if isKnown {
+		// Update / Move / Resurrect
+		s.processExistingAsset(ctx, &result, asset, job, fileType, hash)
+	} else {
+		// Insert
+		// Próbujemy jeszcze znaleźć po hashu (może to rename/move, którego nie złapaliśmy po ścieżce)
+		if hash != "" {
+			existingByHash, err := s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
+			if err == nil && existingByHash.ID > 0 {
+				s.processExistingAsset(ctx, &result, existingByHash, job, fileType, hash)
+			} else {
+				s.processNewAsset(ctx, &result, job, fileType, hash)
+			}
+		} else {
+			s.processNewAsset(ctx, &result, job, fileType, hash)
+		}
+	}
+
+	if result.NewAsset != nil || result.ModifiedAsset != nil {
+		return s.ApplyBatch(ctx, []ScanResult{result})
+	}
+
+	return nil
+}
+func (s *Scanner) resolveFolderID(ctx context.Context, filePath string) (int64, error) {
+	folders, err := s.db.ListScanFolders(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	var bestMatchID int64
+	longestPrefixLen := 0
+
+	cleanPath := filepath.Clean(filePath)
+
+	for _, f := range folders {
+		folderPath := filepath.Clean(f.Path)
+		rel, err := filepath.Rel(folderPath, cleanPath)
+		if err == nil && !strings.HasPrefix(rel, "..") {
+			if len(folderPath) > longestPrefixLen {
+				longestPrefixLen = len(folderPath)
+				bestMatchID = f.ID
+			}
+		}
+	}
+
+	if bestMatchID == 0 {
+		return 0, fmt.Errorf("no matching scan folder found")
+	}
+
+	return bestMatchID, nil
+}
+func (s *Scanner) ListenToWatcher(events <-chan string) {
+	s.logger.Info("🔌 Scanner connected to Watcher events")
+	for path := range events {
+		ctx := context.Background()
+		if s.ctx != nil {
+			ctx = s.ctx
+		}
+
+		err := s.ScanFile(ctx, path)
+		if err != nil {
+			s.logger.Error("Live scan failed", "path", path, "error", err)
+		} else {
+			s.notifier.SendScannerStatus(s.ctx, feedback.Scanning)
+		}
+	}
+}
 func (s *Scanner) getAllFilesCount(folder database.ScanFolder) int {
 	var total = 0
 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {

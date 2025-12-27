@@ -6,6 +6,7 @@ require (
 	github.com/EdlinOrg/prominentcolor v1.0.0
 	github.com/chai2010/webp v1.4.0
 	github.com/disintegration/imaging v1.6.2
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/uuid v1.6.0
 	github.com/lucasb-eyer/go-colorful v1.3.0
 	github.com/pressly/goose/v3 v3.26.0

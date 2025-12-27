@@ -91,6 +91,62 @@ export namespace database {
 		    return a;
 		}
 	}
+	export class UpdateAssetFromScanParams {
+	    filePath: sql.NullString;
+	    scanFolderId: sql.NullInt64;
+	    isDeleted: sql.NullBool;
+	    fileSize: sql.NullInt64;
+	    fileHash: sql.NullString;
+	    lastModified: sql.NullTime;
+	    lastScanned: sql.NullTime;
+	    thumbnailPath: sql.NullString;
+	    imageWidth: sql.NullInt64;
+	    imageHeight: sql.NullInt64;
+	    dominantColor: sql.NullString;
+	    bitDepth: sql.NullInt64;
+	    hasAlphaChannel: sql.NullBool;
+	    id: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateAssetFromScanParams(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filePath = this.convertValues(source["filePath"], sql.NullString);
+	        this.scanFolderId = this.convertValues(source["scanFolderId"], sql.NullInt64);
+	        this.isDeleted = this.convertValues(source["isDeleted"], sql.NullBool);
+	        this.fileSize = this.convertValues(source["fileSize"], sql.NullInt64);
+	        this.fileHash = this.convertValues(source["fileHash"], sql.NullString);
+	        this.lastModified = this.convertValues(source["lastModified"], sql.NullTime);
+	        this.lastScanned = this.convertValues(source["lastScanned"], sql.NullTime);
+	        this.thumbnailPath = this.convertValues(source["thumbnailPath"], sql.NullString);
+	        this.imageWidth = this.convertValues(source["imageWidth"], sql.NullInt64);
+	        this.imageHeight = this.convertValues(source["imageHeight"], sql.NullInt64);
+	        this.dominantColor = this.convertValues(source["dominantColor"], sql.NullString);
+	        this.bitDepth = this.convertValues(source["bitDepth"], sql.NullInt64);
+	        this.hasAlphaChannel = this.convertValues(source["hasAlphaChannel"], sql.NullBool);
+	        this.id = source["id"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 
@@ -100,6 +156,7 @@ export namespace scanner {
 	    Path: string;
 	    Err: any;
 	    NewAsset?: database.CreateAssetParams;
+	    ModifiedAsset?: database.UpdateAssetFromScanParams;
 	    ExistingPath: string;
 	
 	    static createFrom(source: any = {}) {
@@ -111,6 +168,7 @@ export namespace scanner {
 	        this.Path = source["Path"];
 	        this.Err = source["Err"];
 	        this.NewAsset = this.convertValues(source["NewAsset"], database.CreateAssetParams);
+	        this.ModifiedAsset = this.convertValues(source["ModifiedAsset"], database.UpdateAssetFromScanParams);
 	        this.ExistingPath = source["ExistingPath"];
 	    }
 	
@@ -205,6 +263,39 @@ export namespace sql {
 	        this.String = source["String"];
 	        this.Valid = source["Valid"];
 	    }
+	}
+	export class NullTime {
+	    // Go type: time
+	    Time: any;
+	    Valid: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NullTime(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Time = this.convertValues(source["Time"], null);
+	        this.Valid = source["Valid"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
