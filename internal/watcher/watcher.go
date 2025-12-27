@@ -41,7 +41,7 @@ func NewService(db database.Querier, logger *slog.Logger) (*Service, error) {
 		logger:       logger,
 		db:           db,
 		config:       config.NewScannerConfig(),
-		Events:       make(chan string, 100),
+		Events:       make(chan string, 1000),
 		timers:       make(map[string]*time.Timer),
 		watchedPaths: make(map[string]bool),
 	}, nil

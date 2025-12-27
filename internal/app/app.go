@@ -44,3 +44,13 @@ func (a *App) RestoreWindow() {
 		runtime.WindowShow(a.ctx)
 	}
 }
+
+// Shutdown jest wywoływany przy zamykaniu aplikacji
+func (a *App) Shutdown(ctx context.Context) {
+	a.logger.Info("🛑 App shutting down...")
+
+	if a.Watcher != nil {
+		a.Watcher.Shutdown()
+	}
+
+}

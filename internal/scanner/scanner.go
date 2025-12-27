@@ -58,7 +58,10 @@ func (e fileInfoEntry) Info() (fs.FileInfo, error) { return e.info, nil }
 func (s *Scanner) Startup(ctx context.Context) {
 	s.ctx = ctx
 }
-
+func (s *Scanner) Shutdown() {
+	s.logger.Info("🛑 Stopping Scanner...")
+	s.StopScan()
+}
 func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger, notifier feedback.Notifier) *Scanner {
 	return &Scanner{
 		conn:     conn,
