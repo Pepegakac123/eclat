@@ -78,13 +78,13 @@ func main() {
 	notifier := feedback.NewNotifier()
 	diskThumbGen := scanner.NewDiskThumbnailGenerator(thumbsFolder, programLogger)
 	scannerService := scanner.NewScanner(db, queries, diskThumbGen, programLogger, notifier)
-	settingsService := settings.NewSettingsService(queries, programLogger, notifier)
-	watcherService, err := watcher.NewService(programLogger)
+
+	watcherService, err := watcher.NewService(queries, programLogger)
 	if err != nil {
 		log.Fatal("Failed to create watcher:", err)
 	}
 	defer watcherService.Shutdown()
-
+	settingsService := settings.NewSettingsService(queries, programLogger, notifier, watcherService)
 	myApp := app.NewApp(scannerService, settingsService, watcherService)
 
 	err = wails.Run(&options.App{

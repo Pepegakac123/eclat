@@ -28,11 +28,15 @@ func (m *MockWailsRuntime) OpenDirectoryDialog(ctx context.Context, options wail
 	return m.SelectedPath, nil
 }
 
+type NoOpWatcher struct{}
+
+func (nw *NoOpWatcher) Watch(path string)   {}
+func (nw *NoOpWatcher) Unwatch(path string) {}
+
 func TestSettings_ValidatePath(t *testing.T) {
 	mockNotifier := &MockNotifier{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewSettingsService(nil, logger, mockNotifier)
-
+	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{})
 	t.Run("Should return true for existing directory", func(t *testing.T) {
 		tempDir := t.TempDir()
 		isValid := svc.ValidatePath(tempDir)
@@ -59,7 +63,7 @@ func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(queries, logger, mockNotifier)
+	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{})
 	ctx := context.Background()
 	svc.Startup(ctx)
 
@@ -117,7 +121,7 @@ func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
 func TestSettings_FolderPicker_Mock(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(nil, logger, mockNotifier)
+	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{})
 
 	t.Run("Successful Selection", func(t *testing.T) {
 		mockPath := "/fake/path/to/library"
@@ -133,7 +137,7 @@ func TestSettings_FindBestParent_Logic(t *testing.T) {
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(queries, logger, mockNotifier)
+	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{})
 	ctx := context.Background()
 	svc.Startup(ctx)
 
@@ -156,7 +160,7 @@ func TestSettings_FindBestParent_Logic(t *testing.T) {
 }
 func TestSettings_MapToDTO_Scenarios(t *testing.T) {
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(nil, nil, mockNotifier)
+	svc := NewSettingsService(nil, nil, mockNotifier, &NoOpWatcher{})
 
 	t.Run("Map with LastScanned NULL", func(t *testing.T) {
 		f := database.ScanFolder{LastScanned: sql.NullTime{Valid: false}, DateAdded: time.Now()}
@@ -180,7 +184,7 @@ func TestSettings_UpdateFolderStatus_Logic(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(queries, logger, mockNotifier)
+	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{})
 	svc.Startup(ctx)
 	path := filepath.Join(root, "test.png")
 	createDummyFile(t, path)

@@ -37,6 +37,11 @@ func (r *RealWailsRuntime) OpenDirectoryDialog(ctx context.Context, options wail
 	return wailsRuntime.OpenDirectoryDialog(ctx, options)
 }
 
+type FolderWatcher interface {
+	Watch(path string)
+	Unwatch(path string)
+}
+
 // SettingsService odpowiada za konfigurację aplikacji i zarządzanie biblioteką.
 type SettingsService struct {
 	ctx      context.Context
@@ -44,15 +49,17 @@ type SettingsService struct {
 	logger   *slog.Logger
 	notifier feedback.Notifier
 	wails    WailsRuntime
+	watcher  FolderWatcher
 }
 
 // NewSettingsService tworzy nową instancję serwisu.
-func NewSettingsService(db database.Querier, logger *slog.Logger, notifier feedback.Notifier) *SettingsService {
+func NewSettingsService(db database.Querier, logger *slog.Logger, notifier feedback.Notifier, watcher FolderWatcher) *SettingsService {
 	return &SettingsService{
 		db:       db,
 		logger:   logger,
 		notifier: notifier,
 		wails:    &RealWailsRuntime{},
+		watcher:  watcher,
 	}
 }
 
@@ -149,6 +156,9 @@ func (s *SettingsService) DeleteFolder(id int64) error {
 		})
 
 	}
+	if s.watcher != nil && targetFolder.Path != "" {
+		s.watcher.Unwatch(targetFolder.Path)
+	}
 	return s.db.SoftDeleteScanFolder(s.ctx, id)
 }
 
@@ -179,6 +189,9 @@ func (s *SettingsService) AddFolder(path string) (ScanFolderDTO, error) {
 					ID:       existing.ID,
 				})
 			}
+			if s.watcher != nil {
+				s.watcher.Watch(absPath)
+			}
 			restored, _ := s.db.GetScanFolderById(s.ctx, existing.ID)
 			return s.mapToDTO(restored), nil
 		}
@@ -188,6 +201,9 @@ func (s *SettingsService) AddFolder(path string) (ScanFolderDTO, error) {
 	newFolder, err := s.db.CreateScanFolder(s.ctx, absPath)
 	if err != nil {
 		return ScanFolderDTO{}, err
+	}
+	if s.watcher != nil {
+		s.watcher.Watch(absPath)
 	}
 	return s.mapToDTO(newFolder), nil
 }

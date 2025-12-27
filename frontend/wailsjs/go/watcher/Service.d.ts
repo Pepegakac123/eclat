@@ -6,4 +6,6 @@ export function Shutdown():Promise<void>;
 
 export function Startup(arg1:context.Context):Promise<void>;
 
+export function Unwatch(arg1:string):Promise<void>;
+
 export function Watch(arg1:string):Promise<void>;

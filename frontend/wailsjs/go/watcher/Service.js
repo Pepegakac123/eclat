@@ -10,6 +10,10 @@ export function Startup(arg1) {
   return window['go']['watcher']['Service']['Startup'](arg1);
 }
 
+export function Unwatch(arg1) {
+  return window['go']['watcher']['Service']['Unwatch'](arg1);
+}
+
 export function Watch(arg1) {
   return window['go']['watcher']['Service']['Watch'](arg1);
 }
