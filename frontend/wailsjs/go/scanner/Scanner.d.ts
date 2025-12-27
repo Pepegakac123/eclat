@@ -17,7 +17,11 @@ export function GetPredefinedPalette():Promise<Array<config.PaletteColor>>;
 
 export function IsExtensionAllowed(arg1:string):Promise<boolean>;
 
+export function ListenToWatcher(arg1:any):Promise<void>;
+
 export function RemoveExtension(arg1:string):Promise<void>;
+
+export function ScanFile(arg1:context.Context,arg2:string):Promise<void>;
 
 export function StartScan():Promise<void>;
 

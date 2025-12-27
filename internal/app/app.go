@@ -33,6 +33,7 @@ func (a *App) OnStartup(ctx context.Context) {
 	a.Scanner.Startup(ctx)
 	a.SettingsService.Startup(ctx)
 	a.Watcher.Startup(ctx)
+	go a.Scanner.ListenToWatcher(a.Watcher.Events)
 	a.logger.Info("App started")
 }
 

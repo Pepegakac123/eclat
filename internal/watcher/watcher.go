@@ -155,6 +155,7 @@ func (s *Service) startLoop() {
 			if !ok {
 				return
 			}
+			// s.logger.Info("🔍 RAW EVENT", "op", event.Op.String(), "path", event.Name) Debug
 			if event.Has(fsnotify.Create) && s.isDir(event.Name) {
 				s.logger.Info("🆕 New directory detected", "path", event.Name)
 				go func(p string) {

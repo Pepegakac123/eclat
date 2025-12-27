@@ -26,8 +26,16 @@ export function IsExtensionAllowed(arg1) {
   return window['go']['scanner']['Scanner']['IsExtensionAllowed'](arg1);
 }
 
+export function ListenToWatcher(arg1) {
+  return window['go']['scanner']['Scanner']['ListenToWatcher'](arg1);
+}
+
 export function RemoveExtension(arg1) {
   return window['go']['scanner']['Scanner']['RemoveExtension'](arg1);
+}
+
+export function ScanFile(arg1, arg2) {
+  return window['go']['scanner']['Scanner']['ScanFile'](arg1, arg2);
 }
 
 export function StartScan() {
