@@ -4,6 +4,7 @@ import (
 	"context"
 	"eclat/internal/scanner"
 	"eclat/internal/settings"
+	"eclat/internal/watcher"
 	"log/slog"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -15,13 +16,15 @@ type App struct {
 	logger          *slog.Logger
 	Scanner         *scanner.Scanner
 	SettingsService *settings.SettingsService
+	Watcher         *watcher.Service
 }
 
-func NewApp(scanner *scanner.Scanner, settingsService *settings.SettingsService) *App {
+func NewApp(scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service) *App {
 	return &App{
 		logger:          slog.Default(),
 		Scanner:         scanner,
 		SettingsService: settingsService,
+		Watcher:         watcher,
 	}
 }
 
@@ -29,6 +32,7 @@ func (a *App) OnStartup(ctx context.Context) {
 	a.ctx = ctx
 	a.Scanner.Startup(ctx)
 	a.SettingsService.Startup(ctx)
+	a.Watcher.Startup(ctx)
 	a.logger.Info("App started")
 }
 

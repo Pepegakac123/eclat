@@ -6,6 +6,10 @@ export function AddExtensions(arg1) {
   return window['go']['scanner']['Scanner']['AddExtensions'](arg1);
 }
 
+export function ApplyBatch(arg1, arg2) {
+  return window['go']['scanner']['Scanner']['ApplyBatch'](arg1, arg2);
+}
+
 export function Collector(arg1, arg2, arg3) {
   return window['go']['scanner']['Scanner']['Collector'](arg1, arg2, arg3);
 }
@@ -16,10 +20,6 @@ export function GetConfig() {
 
 export function GetPredefinedPalette() {
   return window['go']['scanner']['Scanner']['GetPredefinedPalette']();
-}
-
-export function InsertAssets(arg1, arg2) {
-  return window['go']['scanner']['Scanner']['InsertAssets'](arg1, arg2);
 }
 
 export function IsExtensionAllowed(arg1) {

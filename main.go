@@ -14,6 +14,7 @@ import (
 	"eclat/internal/feedback"
 	"eclat/internal/scanner"
 	"eclat/internal/settings"
+	"eclat/internal/watcher"
 
 	"github.com/pressly/goose/v3"
 	"github.com/wailsapp/wails/v2"
@@ -78,8 +79,13 @@ func main() {
 	diskThumbGen := scanner.NewDiskThumbnailGenerator(thumbsFolder, programLogger)
 	scannerService := scanner.NewScanner(db, queries, diskThumbGen, programLogger, notifier)
 	settingsService := settings.NewSettingsService(queries, programLogger, notifier)
+	watcherService, err := watcher.NewService(programLogger)
+	if err != nil {
+		log.Fatal("Failed to create watcher:", err)
+	}
+	defer watcherService.Shutdown()
 
-	myApp := app.NewApp(scannerService, settingsService)
+	myApp := app.NewApp(scannerService, settingsService, watcherService)
 
 	err = wails.Run(&options.App{
 		Title:            "Eclat",
@@ -100,6 +106,7 @@ func main() {
 			myApp,
 			scannerService,
 			settingsService,
+			watcherService,
 		},
 	})
 
