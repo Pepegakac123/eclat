@@ -22,6 +22,30 @@ SELECT * FROM assets
 WHERE file_hash = ? AND file_hash IS NOT NULL
 LIMIT 1;
 
+-- name: UpdateAssetFromScan :one
+UPDATE assets
+SET
+    -- Identyfikacja i Status (Move / Rename / Restore)
+    file_path = COALESCE(sqlc.narg('file_path'), file_path),
+    scan_folder_id = COALESCE(sqlc.narg('scan_folder_id'), scan_folder_id),
+    is_deleted = COALESCE(sqlc.narg('is_deleted'), is_deleted),
+
+    -- Metadane Techniczne (Refresh Content)
+    file_size = COALESCE(sqlc.narg('file_size'), file_size),
+    file_hash = COALESCE(sqlc.narg('file_hash'), file_hash),
+    last_modified = COALESCE(sqlc.narg('last_modified'), last_modified),
+    last_scanned = COALESCE(sqlc.narg('last_scanned'), last_scanned),
+
+    -- Metadane Obrazu (Thumbnail Generator)
+    thumbnail_path = COALESCE(sqlc.narg('thumbnail_path'), thumbnail_path),
+    image_width = COALESCE(sqlc.narg('image_width'), image_width),
+    image_height = COALESCE(sqlc.narg('image_height'), image_height),
+    dominant_color = COALESCE(sqlc.narg('dominant_color'), dominant_color),
+    bit_depth = COALESCE(sqlc.narg('bit_depth'), bit_depth),
+    has_alpha_channel = COALESCE(sqlc.narg('has_alpha_channel'), has_alpha_channel)
+WHERE id = sqlc.arg('id')
+RETURNING *;
+
 -- name: UpdateAssetMetadata :one
 UPDATE assets
 SET

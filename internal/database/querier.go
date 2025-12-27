@@ -59,6 +59,7 @@ type Querier interface {
 	SoftDeleteAsset(ctx context.Context, id int64) error
 	SoftDeleteScanFolder(ctx context.Context, id int64) error
 	ToggleAssetFavorite(ctx context.Context, id int64) error
+	UpdateAssetFromScan(ctx context.Context, arg UpdateAssetFromScanParams) (Asset, error)
 	UpdateAssetLocation(ctx context.Context, arg UpdateAssetLocationParams) error
 	UpdateAssetMetadata(ctx context.Context, arg UpdateAssetMetadataParams) (Asset, error)
 	UpdateAssetScanStatus(ctx context.Context, arg UpdateAssetScanStatusParams) error

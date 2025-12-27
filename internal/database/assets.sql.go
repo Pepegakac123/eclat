@@ -813,6 +813,94 @@ func (q *Queries) ToggleAssetFavorite(ctx context.Context, id int64) error {
 	return err
 }
 
+const updateAssetFromScan = `-- name: UpdateAssetFromScan :one
+UPDATE assets
+SET
+    -- Identyfikacja i Status (Move / Rename / Restore)
+    file_path = COALESCE(?1, file_path),
+    scan_folder_id = COALESCE(?2, scan_folder_id),
+    is_deleted = COALESCE(?3, is_deleted),
+
+    -- Metadane Techniczne (Refresh Content)
+    file_size = COALESCE(?4, file_size),
+    file_hash = COALESCE(?5, file_hash),
+    last_modified = COALESCE(?6, last_modified),
+    last_scanned = COALESCE(?7, last_scanned),
+
+    -- Metadane Obrazu (Thumbnail Generator)
+    thumbnail_path = COALESCE(?8, thumbnail_path),
+    image_width = COALESCE(?9, image_width),
+    image_height = COALESCE(?10, image_height),
+    dominant_color = COALESCE(?11, dominant_color),
+    bit_depth = COALESCE(?12, bit_depth),
+    has_alpha_channel = COALESCE(?13, has_alpha_channel)
+WHERE id = ?14
+RETURNING id, scan_folder_id, parent_asset_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden
+`
+
+type UpdateAssetFromScanParams struct {
+	FilePath        sql.NullString `json:"filePath"`
+	ScanFolderID    sql.NullInt64  `json:"scanFolderId"`
+	IsDeleted       sql.NullBool   `json:"isDeleted"`
+	FileSize        sql.NullInt64  `json:"fileSize"`
+	FileHash        sql.NullString `json:"fileHash"`
+	LastModified    sql.NullTime   `json:"lastModified"`
+	LastScanned     sql.NullTime   `json:"lastScanned"`
+	ThumbnailPath   sql.NullString `json:"thumbnailPath"`
+	ImageWidth      sql.NullInt64  `json:"imageWidth"`
+	ImageHeight     sql.NullInt64  `json:"imageHeight"`
+	DominantColor   sql.NullString `json:"dominantColor"`
+	BitDepth        sql.NullInt64  `json:"bitDepth"`
+	HasAlphaChannel sql.NullBool   `json:"hasAlphaChannel"`
+	ID              int64          `json:"id"`
+}
+
+func (q *Queries) UpdateAssetFromScan(ctx context.Context, arg UpdateAssetFromScanParams) (Asset, error) {
+	row := q.queryRow(ctx, q.updateAssetFromScanStmt, updateAssetFromScan,
+		arg.FilePath,
+		arg.ScanFolderID,
+		arg.IsDeleted,
+		arg.FileSize,
+		arg.FileHash,
+		arg.LastModified,
+		arg.LastScanned,
+		arg.ThumbnailPath,
+		arg.ImageWidth,
+		arg.ImageHeight,
+		arg.DominantColor,
+		arg.BitDepth,
+		arg.HasAlphaChannel,
+		arg.ID,
+	)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.ScanFolderID,
+		&i.ParentAssetID,
+		&i.FileName,
+		&i.FilePath,
+		&i.FileType,
+		&i.FileSize,
+		&i.ThumbnailPath,
+		&i.Rating,
+		&i.Description,
+		&i.IsFavorite,
+		&i.ImageWidth,
+		&i.ImageHeight,
+		&i.DominantColor,
+		&i.BitDepth,
+		&i.HasAlphaChannel,
+		&i.DateAdded,
+		&i.LastScanned,
+		&i.LastModified,
+		&i.FileHash,
+		&i.IsDeleted,
+		&i.DeletedAt,
+		&i.IsHidden,
+	)
+	return i, err
+}
+
 const updateAssetLocation = `-- name: UpdateAssetLocation :exec
 UPDATE assets
 SET file_path = ?, scan_folder_id = ?, is_deleted = false, last_scanned = ?

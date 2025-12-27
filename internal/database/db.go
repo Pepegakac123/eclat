@@ -171,6 +171,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.toggleAssetFavoriteStmt, err = db.PrepareContext(ctx, toggleAssetFavorite); err != nil {
 		return nil, fmt.Errorf("error preparing query ToggleAssetFavorite: %w", err)
 	}
+	if q.updateAssetFromScanStmt, err = db.PrepareContext(ctx, updateAssetFromScan); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateAssetFromScan: %w", err)
+	}
 	if q.updateAssetLocationStmt, err = db.PrepareContext(ctx, updateAssetLocation); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAssetLocation: %w", err)
 	}
@@ -439,6 +442,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing toggleAssetFavoriteStmt: %w", cerr)
 		}
 	}
+	if q.updateAssetFromScanStmt != nil {
+		if cerr := q.updateAssetFromScanStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateAssetFromScanStmt: %w", cerr)
+		}
+	}
 	if q.updateAssetLocationStmt != nil {
 		if cerr := q.updateAssetLocationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateAssetLocationStmt: %w", cerr)
@@ -557,6 +565,7 @@ type Queries struct {
 	softDeleteAssetStmt               *sql.Stmt
 	softDeleteScanFolderStmt          *sql.Stmt
 	toggleAssetFavoriteStmt           *sql.Stmt
+	updateAssetFromScanStmt           *sql.Stmt
 	updateAssetLocationStmt           *sql.Stmt
 	updateAssetMetadataStmt           *sql.Stmt
 	updateAssetScanStatusStmt         *sql.Stmt
@@ -618,6 +627,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		softDeleteAssetStmt:               q.softDeleteAssetStmt,
 		softDeleteScanFolderStmt:          q.softDeleteScanFolderStmt,
 		toggleAssetFavoriteStmt:           q.toggleAssetFavoriteStmt,
+		updateAssetFromScanStmt:           q.updateAssetFromScanStmt,
 		updateAssetLocationStmt:           q.updateAssetLocationStmt,
 		updateAssetMetadataStmt:           q.updateAssetMetadataStmt,
 		updateAssetScanStatusStmt:         q.updateAssetScanStatusStmt,

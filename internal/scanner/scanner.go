@@ -36,10 +36,11 @@ type ScanJob struct {
 }
 
 type ScanResult struct {
-	Path         string
-	Err          error
-	NewAsset     *database.CreateAssetParams
-	ExistingPath string
+	Path          string
+	Err           error
+	NewAsset      *database.CreateAssetParams
+	ModifiedAsset *database.UpdateAssetFromScanParams
+	ExistingPath  string
 }
 
 func (s *Scanner) Startup(ctx context.Context) {
@@ -217,12 +218,15 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 }
 
 func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, exist database.Asset, job ScanJob, fileType, hash string) {
+	// Sprawdzamy czy ścieżka się zgadza (To ten sam plik na dysku co w bazie)
 	if exist.FilePath == job.Path {
+
+		// Scenariusz A: RESURRECTION (Przywracanie z kosza)
+		// Jeśli plik był oznaczony jako usunięty, ale go znaleźliśmy -> ożywiamy go.
+		var isResurrected bool
 		if exist.IsDeleted {
 			s.logger.Info("🧟 Resurrection: Restoring soft-deleted asset", "id", exist.ID, "path", job.Path)
-			if err := s.db.RestoreAsset(ctx, exist.ID); err != nil {
-				s.logger.Error("Failed to resurrect asset", "error", err)
-			}
+			isResurrected = true
 		}
 
 		info, err := job.Entry.Info()
@@ -230,30 +234,45 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 			info, _ = os.Stat(job.Path)
 		}
 
+		// Scenariusz B: CONTENT REFRESH (Zmiana zawartości)
 		if info != nil {
 			dbTime := exist.LastModified.Unix()
 			diskTime := info.ModTime().Unix()
 
-			if dbTime != diskTime {
-				s.logger.Info("📝 File Content Changed: Refreshing metadata", "path", job.Path)
+			// Odświeżamy jeśli: (czas się zmienił) LUB (był martwy i wstaje z grobu)
+			if dbTime != diskTime || isResurrected {
+				s.logger.Info("📝 File Content Changed or Resurrected: Refreshing metadata", "path", job.Path)
 
 				meta, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash)
 				if err == nil {
-					err = s.db.RefreshAssetTechnicalMetadata(ctx, database.RefreshAssetTechnicalMetadataParams{
-						FileSize:        info.Size(),
-						LastModified:    info.ModTime(),
-						LastScanned:     time.Now(),
-						ThumbnailPath:   meta.ThumbnailPath,
+					// Tworzymy PACZKĘ aktualizacyjną
+					modifiedAsset := &database.UpdateAssetFromScanParams{
+						ID: exist.ID,
+						// WAŻNE: Tu "ożywiamy" plik (IsDeleted = false)
+						IsDeleted:   sql.NullBool{Bool: false, Valid: true},
+						LastScanned: sql.NullTime{Time: time.Now(), Valid: true},
+
+						// Metadane techniczne
+						FileSize:     sql.NullInt64{Int64: meta.FileSize, Valid: true},
+						LastModified: sql.NullTime{Time: meta.LastModified, Valid: true},
+						FileHash:     meta.FileHash,
+
+						// Metadane wizualne
+						ThumbnailPath:   sql.NullString{String: meta.ThumbnailPath, Valid: true},
 						ImageWidth:      meta.ImageWidth,
 						ImageHeight:     meta.ImageHeight,
 						DominantColor:   meta.DominantColor,
 						BitDepth:        meta.BitDepth,
 						HasAlphaChannel: meta.HasAlphaChannel,
-						ID:              exist.ID,
-					})
-					if err != nil {
-						s.logger.Error("Failed to save refreshed metadata", "error", err)
 					}
+					result.ModifiedAsset = modifiedAsset
+				}
+			} else if isResurrected {
+				// Jeśli tylko ożywiamy, ale treść się nie zmieniła, wysyłamy minimalny update
+				result.ModifiedAsset = &database.UpdateAssetFromScanParams{
+					ID:          exist.ID,
+					IsDeleted:   sql.NullBool{Bool: false, Valid: true},
+					LastScanned: sql.NullTime{Time: time.Now(), Valid: true},
 				}
 			}
 		}
@@ -261,27 +280,28 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 		return
 	}
 
+	// 2. Jeśli ścieżki się różnią, ale znaleźliśmy plik w bazie (po hashu?)
+	// To oznacza Move/Rename lub Kopię.
+
 	_, statErr := os.Stat(exist.FilePath)
 	oldFileMissing := os.IsNotExist(statErr)
 
 	if oldFileMissing {
+		// Scenariusz C: MOVE / RENAME
 		s.logger.Info("🚚 Move/Rename Detected", "old_path", exist.FilePath, "new_path", job.Path)
 
-		err := s.db.UpdateAssetLocation(ctx, database.UpdateAssetLocationParams{
+		result.ModifiedAsset = &database.UpdateAssetFromScanParams{
 			ID:           exist.ID,
-			FilePath:     job.Path,
-			LastScanned:  time.Now(),
-			ScanFolderID: sql.NullInt64{Int64: job.FolderId, Valid: job.FolderId > 0},
-		})
-
-		if err != nil {
-			s.logger.Error("Failed to update location for moved asset", "error", err)
-			result.Err = err
-		} else {
-			result.ExistingPath = exist.FilePath
+			FilePath:     sql.NullString{String: job.Path, Valid: true},
+			ScanFolderID: sql.NullInt64{Int64: job.FolderId, Valid: true},
+			IsDeleted:    sql.NullBool{Bool: false, Valid: true}, // Upewniamy się, że żyje
+			LastScanned:  sql.NullTime{Time: time.Now(), Valid: true},
 		}
+		result.ExistingPath = exist.FilePath
 
 	} else {
+		// Scenariusz D: DUPLICATE (Copy)
+		// Tutaj tworzymy nowy asset, więc processNewAsset jest OK.
 		s.logger.Info("👯 Duplicate Detected (Copy)", "original_id", exist.ID, "new_copy_path", job.Path)
 		s.processNewAsset(ctx, result, job, fileType, hash)
 	}
@@ -289,7 +309,7 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 
 func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-chan ScanResult) map[string]bool {
 	const batchSize = 100
-	const emitAfter = 30
+	const emitAfter = 30 // UI update frequency
 	buff := make([]ScanResult, 0, batchSize)
 	processed := make(map[string]bool)
 
@@ -297,10 +317,10 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 
 	flush := func() {
 		if len(buff) > 0 {
-			s.logger.Info("Flushing batch to DB", "count", len(buff))
-			err := s.InsertAssets(ctx, buff)
+			// s.logger.Info("Flushing batch to DB", "count", len(buff))
+			err := s.ApplyBatch(ctx, buff)
 			if err != nil {
-				s.logger.Error("Batch insert failed", "error", err)
+				s.logger.Error("Batch operation failed", "error", err)
 			}
 			buff = buff[:0]
 		}
@@ -312,14 +332,18 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 		} else {
 			s.logger.Debug("File scanned", "path", result.Path)
 		}
-		if result.NewAsset != nil {
+		// Dodajemy do bufora jeśli jest co zapisać (Nowy LUB Zmodyfikowany)
+		if result.NewAsset != nil || result.ModifiedAsset != nil {
 			buff = append(buff, result)
 		}
+
+		// Logika cache'owania ścieżek
 		if result.ExistingPath != "" {
 			processed[result.ExistingPath] = true
 		} else {
 			processed[result.Path] = true
 		}
+
 		if len(buff) >= batchSize {
 			flush()
 		}
@@ -329,22 +353,35 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 	return processed
 }
 
-func (s *Scanner) InsertAssets(ctx context.Context, buffer []ScanResult) error {
+func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 	tx, err := s.conn.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+
 	qtx := database.New(tx)
+
 	for _, item := range buffer {
+		// 1. INSERT
 		if item.NewAsset != nil {
 			_, err := qtx.CreateAsset(ctx, *item.NewAsset)
 			if err != nil {
-				tx.Rollback()
-				return err
+				s.logger.Error("Failed to insert asset", "path", item.Path, "error", err)
+				continue
+			}
+		}
+
+		// 2. UPDATE (Patch)
+		if item.ModifiedAsset != nil {
+			_, err := qtx.UpdateAssetFromScan(ctx, *item.ModifiedAsset)
+			if err != nil {
+				s.logger.Error("Failed to update asset", "path", item.Path, "error", err)
+				continue
 			}
 		}
 	}
+
 	return tx.Commit()
 }
 

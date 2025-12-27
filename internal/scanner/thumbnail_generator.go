@@ -97,7 +97,7 @@ func (g *DiskThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailRes
 	originalBounds := img.Bounds()
 	hasAlphaChannel := hasAlpha(img)
 	bitDepth := GetBitDepth(img)
-	thumb := imaging.Resize(img, 400, 0, imaging.Lanczos)
+	thumb := imaging.Resize(img, 400, 0, imaging.Linear)
 
 	imgMetadata := g.extractMetadataFromThumb(thumb, originalBounds, bitDepth, hasAlphaChannel)
 
