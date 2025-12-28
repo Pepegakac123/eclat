@@ -228,8 +228,20 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 	}
 
 	s.logger.Debug("New asset detected", "path", job.Path)
+	targetGroupID := uuid.New().String()
 
-	newAsset, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash)
+	if hash != "" {
+		existingDuplicate, err := s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
+		if err == nil {
+			s.logger.Info("🔗 Duplicate found - linking to existing group",
+				"new_path", job.Path,
+				"joined_group_id", existingDuplicate.GroupID,
+				"original_path", existingDuplicate.FilePath)
+
+			targetGroupID = existingDuplicate.GroupID
+		}
+	}
+	newAsset, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash, targetGroupID)
 	if err != nil {
 		s.logger.Warn("Failed to generate metadata for new asset", "path", job.Path, "error", err)
 		result.Err = err
@@ -258,7 +270,7 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 			if dbTime != diskTime || isResurrected {
 				s.logger.Info("📝 File Content Changed or Resurrected: Refreshing metadata", "path", job.Path)
 
-				meta, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash)
+				meta, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash, exist.GroupID)
 				if err == nil {
 					modifiedAsset := &database.UpdateAssetFromScanParams{
 						ID:              exist.ID,
@@ -388,7 +400,7 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 	return nil
 }
 
-func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string) (database.CreateAssetParams, error) {
+func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string, targetGroupID string) (database.CreateAssetParams, error) {
 	thumb, err := s.thumbGen.Generate(ctx, path)
 	if err != nil {
 		s.logger.Debug("Failed to generate thumbnail", "path", path, "error", err)
@@ -401,10 +413,9 @@ func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry 
 	}
 
 	hasValidDimensions := thumb.Metadata.Width > 0 && thumb.Metadata.Height > 0
-	newGroupID := uuid.New().String()
 	newAsset := database.CreateAssetParams{
 		ScanFolderID:    sql.NullInt64{Int64: folderId, Valid: true},
-		GroupID:         newGroupID,
+		GroupID:         targetGroupID,
 		FileName:        entry.Name(),
 		FilePath:        path,
 		FileType:        filetype,
