@@ -203,3 +203,11 @@ UPDATE assets
 SET scan_folder_id = ?
 WHERE file_path LIKE ? || '%'
 AND scan_folder_id != ?;
+
+-- name: FindPotentialSiblings :many
+SELECT id, group_id, file_name
+FROM assets
+WHERE scan_folder_id = ?
+  AND file_name LIKE ?
+  AND id != ?
+LIMIT 50;

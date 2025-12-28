@@ -147,3 +147,7 @@ func (m *MockThumbnailGenerator) Generate(ctx context.Context, sourcePath string
 		IsPlaceholder: false,
 	}, nil
 }
+func createContentFile(t *testing.T, path, content string) {
+	err := os.WriteFile(path, []byte(content), 0644)
+	assert.NoError(t, err)
+}

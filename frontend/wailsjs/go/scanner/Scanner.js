@@ -54,6 +54,10 @@ export function StopScan() {
   return window['go']['scanner']['Scanner']['StopScan']();
 }
 
+export function TryHeuristicMatch(arg1, arg2, arg3) {
+  return window['go']['scanner']['Scanner']['TryHeuristicMatch'](arg1, arg2, arg3);
+}
+
 export function Worker(arg1, arg2, arg3, arg4) {
   return window['go']['scanner']['Scanner']['Worker'](arg1, arg2, arg3, arg4);
 }

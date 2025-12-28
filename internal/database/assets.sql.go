@@ -124,6 +124,50 @@ func (q *Queries) DeleteAssetPermanent(ctx context.Context, id int64) error {
 	return err
 }
 
+const findPotentialSiblings = `-- name: FindPotentialSiblings :many
+SELECT id, group_id, file_name
+FROM assets
+WHERE scan_folder_id = ?
+  AND file_name LIKE ?
+  AND id != ?
+LIMIT 50
+`
+
+type FindPotentialSiblingsParams struct {
+	ScanFolderID sql.NullInt64 `json:"scanFolderId"`
+	FileName     string        `json:"fileName"`
+	ID           int64         `json:"id"`
+}
+
+type FindPotentialSiblingsRow struct {
+	ID       int64  `json:"id"`
+	GroupID  string `json:"groupId"`
+	FileName string `json:"fileName"`
+}
+
+func (q *Queries) FindPotentialSiblings(ctx context.Context, arg FindPotentialSiblingsParams) ([]FindPotentialSiblingsRow, error) {
+	rows, err := q.query(ctx, q.findPotentialSiblingsStmt, findPotentialSiblings, arg.ScanFolderID, arg.FileName, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FindPotentialSiblingsRow
+	for rows.Next() {
+		var i FindPotentialSiblingsRow
+		if err := rows.Scan(&i.ID, &i.GroupID, &i.FileName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllColors = `-- name: GetAllColors :many
 SELECT DISTINCT dominant_color
 FROM assets a
