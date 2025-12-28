@@ -38,6 +38,10 @@ export function ScanFile(arg1, arg2) {
   return window['go']['scanner']['Scanner']['ScanFile'](arg1, arg2);
 }
 
+export function Shutdown() {
+  return window['go']['scanner']['Scanner']['Shutdown']();
+}
+
 export function StartScan() {
   return window['go']['scanner']['Scanner']['StartScan']();
 }

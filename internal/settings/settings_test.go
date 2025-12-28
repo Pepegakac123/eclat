@@ -3,7 +3,7 @@ package settings
 import (
 	"context"
 	"database/sql"
-	"eclat/internal/config" // Import configa
+	"eclat/internal/config"
 	"eclat/internal/database"
 	"io"
 	"log/slog"
@@ -37,7 +37,7 @@ func (nw *NoOpWatcher) Unwatch(path string) {}
 func TestSettings_ValidatePath(t *testing.T) {
 	mockNotifier := &MockNotifier{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	// Przekazujemy config
+	// Tutaj nil dla DB jest OK, bo ValidatePath używa tylko os.Stat
 	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 
 	t.Run("Should return true for existing directory", func(t *testing.T) {
@@ -62,11 +62,18 @@ func TestSettings_ValidatePath(t *testing.T) {
 }
 
 func TestSettings_ConfigUpdates(t *testing.T) {
+	// POPRAWKA 1: Musimy mieć bazę danych, bo SetAllowedExtensions zapisuje do niej!
+	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	// Tworzymy config "na zewnątrz"
+
 	cfg := config.NewScannerConfig()
-	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{}, cfg)
+	// POPRAWKA 2: Przekazujemy queries zamiast nil
+	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, cfg)
+
+	// POPRAWKA 3: Inicjalizujemy kontekst, bo baza go wymaga
+	ctx := context.Background()
+	svc.Startup(ctx)
 
 	t.Run("Should update extensions in shared config", func(t *testing.T) {
 		// Początkowy stan
@@ -84,9 +91,13 @@ func TestSettings_ConfigUpdates(t *testing.T) {
 		assert.Contains(t, updated.AllowedExtensions, ".obj")
 
 		// KLUCZOWE: Sprawdzamy czy "shared config" został zaktualizowany
-		// Dzięki temu Scanner i Watcher też zobaczą zmiany!
 		assert.True(t, cfg.IsExtensionAllowed(".blend"))
 		assert.False(t, cfg.IsExtensionAllowed(".jpg"), "Stare rozszerzenie powinno zniknąć")
+
+		// Sprawdźmy czy zapisało się w bazie (Persistence Check)
+		storedJSON, err := queries.GetSystemSetting(ctx, "allowed_extensions")
+		assert.NoError(t, err)
+		assert.Contains(t, storedJSON, ".blend", "Ustawienia powinny trafić do bazy")
 	})
 
 	t.Run("Should filter dangerous extensions", func(t *testing.T) {
@@ -105,7 +116,6 @@ func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	// Przekazujemy config
 	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 	ctx := context.Background()
 	svc.Startup(ctx)
@@ -163,8 +173,8 @@ func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
 func TestSettings_FolderPicker_Mock(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	// Przekazujemy config
 	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
+	svc.Startup(context.Background())
 
 	t.Run("Successful Selection", func(t *testing.T) {
 		mockPath := "/fake/path/to/library"
@@ -180,7 +190,6 @@ func TestSettings_FindBestParent_Logic(t *testing.T) {
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	// Przekazujemy config
 	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 	ctx := context.Background()
 	svc.Startup(ctx)
@@ -200,7 +209,6 @@ func TestSettings_FindBestParent_Logic(t *testing.T) {
 
 func TestSettings_MapToDTO_Scenarios(t *testing.T) {
 	mockNotifier := &MockNotifier{}
-	// Przekazujemy config
 	svc := NewSettingsService(nil, nil, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 
 	t.Run("Map with LastScanned NULL", func(t *testing.T) {
@@ -226,7 +234,6 @@ func TestSettings_UpdateFolderStatus_Logic(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	// Przekazujemy config
 	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 	svc.Startup(ctx)
 	path := filepath.Join(root, "test.png")

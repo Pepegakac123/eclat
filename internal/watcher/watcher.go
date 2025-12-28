@@ -27,6 +27,7 @@ type Service struct {
 	watchedPaths map[string]bool
 	timers       map[string]*time.Timer
 	mu           sync.Mutex
+	shutdownOnce sync.Once
 }
 
 // NewService - Zaktualizowana sygnatura: przyjmuje config!
@@ -61,10 +62,19 @@ func (s *Service) Startup(ctx context.Context) {
 }
 
 func (s *Service) Shutdown() {
-	if err := s.watcher.Close(); err != nil {
-		s.logger.Error("Failed to close watcher", "error", err)
-	}
-	close(s.Events)
+	s.shutdownOnce.Do(func() {
+		s.logger.Info("🛑 Shutting down Watcher service...")
+		if err := s.watcher.Close(); err != nil {
+			s.logger.Error("Failed to close fsnotify watcher", "error", err)
+		}
+		s.mu.Lock()
+		for _, t := range s.timers {
+			t.Stop()
+		}
+		s.mu.Unlock()
+
+		close(s.Events)
+	})
 }
 
 func (s *Service) initFolders() error {
@@ -194,14 +204,26 @@ func (s *Service) triggerDebounce(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	select {
+	case <-s.ctx.Done():
+		return
+	default:
+	}
+
 	if t, exists := s.timers[path]; exists {
 		t.Stop()
 	}
 
 	s.timers[path] = time.AfterFunc(debounceDuration, func() {
 		s.mu.Lock()
+		// Sprawdźmy czy timer wciąż tam jest (czy nie został wyczyszczony przez Shutdown)
+		if _, ok := s.timers[path]; !ok {
+			s.mu.Unlock()
+			return
+		}
 		delete(s.timers, path)
 		s.mu.Unlock()
+
 		_, err := os.Stat(path)
 
 		if err == nil {
@@ -219,6 +241,12 @@ func (s *Service) triggerDebounce(path string) {
 }
 
 func (s *Service) sendEvent(path string) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Warn("Dropped event due to channel close", "path", path)
+		}
+	}()
+
 	select {
 	case s.Events <- path:
 	default:

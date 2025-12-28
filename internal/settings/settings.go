@@ -6,6 +6,7 @@ import (
 	"eclat/internal/config"
 	"eclat/internal/database"
 	"eclat/internal/feedback"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -50,12 +51,14 @@ type FolderWatcher interface {
 	Unwatch(path string)
 }
 
+const KeyAllowedExtensions = "allowed_extensions"
+
 // SettingsService odpowiada za konfigurację aplikacji i zarządzanie biblioteką.
 type SettingsService struct {
 	ctx      context.Context
 	db       database.Querier
 	logger   *slog.Logger
-	config   *config.ScannerConfig // Wskaźnik na shared config
+	config   *config.ScannerConfig
 	notifier feedback.Notifier
 	wails    WailsRuntime
 	watcher  FolderWatcher
@@ -67,7 +70,7 @@ func NewSettingsService(db database.Querier, logger *slog.Logger, notifier feedb
 		db:       db,
 		logger:   logger,
 		notifier: notifier,
-		config:   cfg, // Store dependency
+		config:   cfg,
 		wails:    &RealWailsRuntime{},
 		watcher:  watcher,
 	}
@@ -89,16 +92,13 @@ func (s *SettingsService) GetConfig() AppConfigDTO {
 	}
 }
 
-// SetAllowedExtensions aktualizuje listę rozszerzeń w całej aplikacji
+// SetAllowedExtensions aktualizuje listę rozszerzeń w całej aplikacji i ZAPISUJE DO BAZY
 func (s *SettingsService) SetAllowedExtensions(exts []string) error {
 	var validExts []string
 	var invalidExts []string
 
 	for _, ext := range exts {
-		// Używamy helpera z pakietu config do walidacji (np. odrzucamy .exe)
 		if config.IsExtensionValid(ext) {
-			// Normalizacja (dodanie kropki, małe litery) dzieje się też w configu,
-			// ale tutaj możemy zrobić wstępne czyszczenie
 			normalized := strings.ToLower(ext)
 			if !strings.HasPrefix(normalized, ".") {
 				normalized = "." + normalized
@@ -108,21 +108,32 @@ func (s *SettingsService) SetAllowedExtensions(exts []string) error {
 			invalidExts = append(invalidExts, ext)
 		}
 	}
-
 	if len(invalidExts) > 0 {
 		s.logger.Warn("Attempted to add invalid extensions", "extensions", invalidExts)
 		s.notifier.SendToast(s.ctx, feedback.ToastField{
 			Type:    "warning",
 			Title:   "Invalid Extensions Skipped",
-			Message: fmt.Sprintf("Skipped dangerous/invalid types: %s", strings.Join(invalidExts, ", ")),
+			Message: fmt.Sprintf("Skipped dangerous or invalid types: %s", strings.Join(invalidExts, ", ")),
 		})
 	}
-
-	// Aktualizujemy Thread-Safe Config
-	// To natychmiast wpłynie na Scannera i Watchera, bo korzystają z tej samej instancji!
 	s.config.SetAllowedExtensions(validExts)
+	jsonBytes, err := json.Marshal(validExts)
+	if err != nil {
+		s.logger.Error("Failed to marshal extensions", "error", err)
+		return fmt.Errorf("failed to save settings: %w", err)
+	}
 
-	s.logger.Info("Extensions updated", "count", len(validExts))
+	err = s.db.SetSystemSetting(s.ctx, database.SetSystemSettingParams{
+		Key:   KeyAllowedExtensions,
+		Value: string(jsonBytes),
+	})
+
+	if err != nil {
+		s.logger.Error("Failed to persist settings to DB", "error", err)
+	} else {
+		s.logger.Info("Extensions saved to DB", "count", len(validExts))
+	}
+
 	return nil
 }
 

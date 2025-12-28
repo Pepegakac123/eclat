@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"encoding/json"
 	"io"
 	"log"
 	"log/slog"
@@ -77,7 +79,25 @@ func main() {
 	}
 	queries := database.New(db)
 	sharedConfig := config.NewScannerConfig()
+	ctx := context.Background()
+	programLogger.Info(" Loading system settings...")
 
+	storedExtsJSON, err := queries.GetSystemSetting(ctx, "allowed_extensions")
+	if err == nil && storedExtsJSON != "" {
+		var storedExts []string
+		if err := json.Unmarshal([]byte(storedExtsJSON), &storedExts); err == nil {
+			if len(storedExts) > 0 {
+				programLogger.Info("✅ Restored extensions from DB", "count", len(storedExts))
+				sharedConfig.SetAllowedExtensions(storedExts)
+			} else {
+				programLogger.Info("⚠️ DB extensions list is empty, using defaults")
+			}
+		} else {
+			programLogger.Error("❌ Failed to unmarshal settings from DB, using defaults", "error", err)
+		}
+	} else {
+		programLogger.Info("ℹ️ No custom settings found in DB, using defaults")
+	}
 	notifier := feedback.NewNotifier()
 	diskThumbGen := scanner.NewDiskThumbnailGenerator(thumbsFolder, programLogger)
 

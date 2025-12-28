@@ -1,7 +1,10 @@
 package scanner
 
 import (
+	"context"
 	"eclat/internal/config"
+	"eclat/internal/database"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -69,6 +72,11 @@ func (s *Scanner) AddExtensions(exts []string) error {
 
 	if modified {
 		s.config.SetAllowedExtensions(currentExts)
+		// PERSISTENCE: Zapisujemy do bazy
+		if err := s.persistExtensions(currentExts); err != nil {
+			s.logger.Error("Failed to persist extensions", "error", err)
+			return err
+		}
 	}
 
 	return nil
@@ -90,5 +98,33 @@ func (s *Scanner) RemoveExtension(ext string) {
 	// Jeśli długość się zmieniła, aktualizujemy
 	if len(newExts) != len(currentExts) {
 		s.config.SetAllowedExtensions(newExts)
+		// PERSISTENCE: Zapisujemy do bazy (ignorujemy błąd w sygnaturze, ale logujemy)
+		if err := s.persistExtensions(newExts); err != nil {
+			s.logger.Error("Failed to persist extensions removal", "error", err)
+		}
 	}
+}
+
+// persistExtensions to helper do zapisywania stanu w bazie
+func (s *Scanner) persistExtensions(exts []string) error {
+	// Safety check dla testów, gdzie db może być nil
+	if s.db == nil {
+		return nil
+	}
+
+	jsonBytes, err := json.Marshal(exts)
+	if err != nil {
+		return err
+	}
+
+	// Używamy kontekstu aplikacji lub tła, jeśli jeszcze nie wystartowała
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	return s.db.SetSystemSetting(ctx, database.SetSystemSettingParams{
+		Key:   "allowed_extensions",
+		Value: string(jsonBytes),
+	})
 }

@@ -11,7 +11,7 @@ export function ApplyBatch(arg1:context.Context,arg2:Array<scanner.ScanResult>):
 
 export function Collector(arg1:context.Context,arg2:number,arg3:any):Promise<Record<string, boolean>>;
 
-export function GetConfig():Promise<config.ScannerConfig>;
+export function GetConfig():Promise<scanner.ScannerConfigSnapshot>;
 
 export function GetPredefinedPalette():Promise<Array<config.PaletteColor>>;
 
@@ -22,6 +22,8 @@ export function ListenToWatcher(arg1:any):Promise<void>;
 export function RemoveExtension(arg1:string):Promise<void>;
 
 export function ScanFile(arg1:context.Context,arg2:string):Promise<void>;
+
+export function Shutdown():Promise<void>;
 
 export function StartScan():Promise<void>;
 
