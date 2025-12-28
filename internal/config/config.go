@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 )
 
 type PaletteColor struct {
@@ -11,7 +12,6 @@ type PaletteColor struct {
 	Hex  string `json:"hex"`
 }
 
-// Exported variables (Capitalized)
 var DefaultAllowedExtensions = []string{
 	".jpg", ".jpeg", ".gif", ".png", ".webp", ".blend", ".fbx", ".obj",
 	".ztl", ".zpr", ".exr", ".hdr", ".tif", ".tiff", ".max", ".ma", ".mb",
@@ -31,8 +31,9 @@ var PredefinedPalette = []PaletteColor{
 }
 
 type ScannerConfig struct {
-	AllowedExtensions    []string `json:"allowedExtensions"`
-	MaxAllowHashFileSize int64    `json:"maxAllowHashFileSize"`
+	allowedExtensions    []string
+	maxAllowHashFileSize int64
+	mu                   sync.RWMutex
 }
 
 func NewScannerConfig() *ScannerConfig {
@@ -40,12 +41,43 @@ func NewScannerConfig() *ScannerConfig {
 	copy(exts, DefaultAllowedExtensions)
 
 	return &ScannerConfig{
-		AllowedExtensions:    exts,
-		MaxAllowHashFileSize: 1024 * 1024 * 256,
+		allowedExtensions:    exts,
+		maxAllowHashFileSize: 1024 * 1024 * 256,
 	}
 }
 
-// IsExtensionValid checks if extension is safe. Moved here as a helper.
+func (c *ScannerConfig) GetAllowedExtensions() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	result := make([]string, len(c.allowedExtensions))
+	copy(result, c.allowedExtensions)
+	return result
+}
+
+// SetAllowedExtensions bezpiecznie podmienia listę
+func (c *ScannerConfig) SetAllowedExtensions(exts []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	newExts := make([]string, len(exts))
+	copy(newExts, exts)
+	c.allowedExtensions = newExts
+}
+
+func (c *ScannerConfig) GetMaxHashFileSize() int64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.maxAllowHashFileSize
+}
+
+// IsExtensionAllowed sprawdza czy plik ma dozwolone rozszerzenie (sprawdza w konfigu instancji)
+func (c *ScannerConfig) IsExtensionAllowed(path string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	ext := strings.ToLower(filepath.Ext(path))
+	return slices.Contains(c.allowedExtensions, ext)
+}
+
 func IsExtensionValid(ext string) bool {
 	f := strings.ToLower(ext)
 	if strings.Contains(f, ".") {

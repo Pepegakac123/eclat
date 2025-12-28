@@ -24,11 +24,11 @@ type Scanner struct {
 	conn       *sql.DB
 	logger     *slog.Logger
 	cancelFunc context.CancelFunc
-	config     *config.ScannerConfig // Zmiana typu
+	config     *config.ScannerConfig // Wskaźnik na współdzielony config
 	isScanning atomic.Bool
 	thumbGen   ThumbnailGenerator
 	ctx        context.Context
-	notifier   feedback.Notifier // Zmiana typu
+	notifier   feedback.Notifier
 }
 
 type ScanJob struct {
@@ -58,16 +58,19 @@ func (e fileInfoEntry) Info() (fs.FileInfo, error) { return e.info, nil }
 func (s *Scanner) Startup(ctx context.Context) {
 	s.ctx = ctx
 }
+
 func (s *Scanner) Shutdown() {
 	s.logger.Info("🛑 Stopping Scanner...")
 	s.StopScan()
 }
-func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger, notifier feedback.Notifier) *Scanner {
+
+// NewScanner - Zaktualizowana sygnatura: przyjmuje config!
+func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger, notifier feedback.Notifier, cfg *config.ScannerConfig) *Scanner {
 	return &Scanner{
 		conn:     conn,
 		db:       db,
 		logger:   logger,
-		config:   config.NewScannerConfig(),
+		config:   cfg,
 		thumbGen: thumbGen,
 		notifier: notifier,
 	}
@@ -184,7 +187,8 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 			continue
 		}
 
-		hash, err := CalculateFileHash(job.Path, s.config.MaxAllowHashFileSize)
+		// Używamy gettera dla MaxHashFileSize
+		hash, err := CalculateFileHash(job.Path, s.config.GetMaxHashFileSize())
 		if err != nil {
 			s.logger.Warn("Hashing skipped (likely too large)", "path", job.Path, "reason", err)
 			hash = ""
@@ -233,11 +237,7 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 }
 
 func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, exist database.Asset, job ScanJob, fileType, hash string) {
-	// Sprawdzamy czy ścieżka się zgadza (To ten sam plik na dysku co w bazie)
 	if exist.FilePath == job.Path {
-
-		// Scenariusz A: RESURRECTION (Przywracanie z kosza)
-		// Jeśli plik był oznaczony jako usunięty, ale go znaleźliśmy -> ożywiamy go.
 		var isResurrected bool
 		if exist.IsDeleted {
 			s.logger.Info("🧟 Resurrection: Restoring soft-deleted asset", "id", exist.ID, "path", job.Path)
@@ -249,30 +249,22 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 			info, _ = os.Stat(job.Path)
 		}
 
-		// Scenariusz B: CONTENT REFRESH (Zmiana zawartości)
 		if info != nil {
 			dbTime := exist.LastModified.Unix()
 			diskTime := info.ModTime().Unix()
 
-			// Odświeżamy jeśli: (czas się zmienił) LUB (był martwy i wstaje z grobu)
 			if dbTime != diskTime || isResurrected {
 				s.logger.Info("📝 File Content Changed or Resurrected: Refreshing metadata", "path", job.Path)
 
 				meta, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash)
 				if err == nil {
-					// Tworzymy PACZKĘ aktualizacyjną
 					modifiedAsset := &database.UpdateAssetFromScanParams{
-						ID: exist.ID,
-						// WAŻNE: Tu "ożywiamy" plik (IsDeleted = false)
-						IsDeleted:   sql.NullBool{Bool: false, Valid: true},
-						LastScanned: sql.NullTime{Time: time.Now(), Valid: true},
-
-						// Metadane techniczne
-						FileSize:     sql.NullInt64{Int64: meta.FileSize, Valid: true},
-						LastModified: sql.NullTime{Time: meta.LastModified, Valid: true},
-						FileHash:     meta.FileHash,
-
-						// Metadane wizualne
+						ID:              exist.ID,
+						IsDeleted:       sql.NullBool{Bool: false, Valid: true},
+						LastScanned:     sql.NullTime{Time: time.Now(), Valid: true},
+						FileSize:        sql.NullInt64{Int64: meta.FileSize, Valid: true},
+						LastModified:    sql.NullTime{Time: meta.LastModified, Valid: true},
+						FileHash:        meta.FileHash,
 						ThumbnailPath:   sql.NullString{String: meta.ThumbnailPath, Valid: true},
 						ImageWidth:      meta.ImageWidth,
 						ImageHeight:     meta.ImageHeight,
@@ -283,7 +275,6 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 					result.ModifiedAsset = modifiedAsset
 				}
 			} else if isResurrected {
-				// Jeśli tylko ożywiamy, ale treść się nie zmieniła, wysyłamy minimalny update
 				result.ModifiedAsset = &database.UpdateAssetFromScanParams{
 					ID:          exist.ID,
 					IsDeleted:   sql.NullBool{Bool: false, Valid: true},
@@ -295,28 +286,20 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 		return
 	}
 
-	// 2. Jeśli ścieżki się różnią, ale znaleźliśmy plik w bazie (po hashu?)
-	// To oznacza Move/Rename lub Kopię.
-
 	_, statErr := os.Stat(exist.FilePath)
 	oldFileMissing := os.IsNotExist(statErr)
 
 	if oldFileMissing {
-		// Scenariusz C: MOVE / RENAME
 		s.logger.Info("🚚 Move/Rename Detected", "old_path", exist.FilePath, "new_path", job.Path)
-
 		result.ModifiedAsset = &database.UpdateAssetFromScanParams{
 			ID:           exist.ID,
 			FilePath:     sql.NullString{String: job.Path, Valid: true},
 			ScanFolderID: sql.NullInt64{Int64: job.FolderId, Valid: true},
-			IsDeleted:    sql.NullBool{Bool: false, Valid: true}, // Upewniamy się, że żyje
+			IsDeleted:    sql.NullBool{Bool: false, Valid: true},
 			LastScanned:  sql.NullTime{Time: time.Now(), Valid: true},
 		}
 		result.ExistingPath = exist.FilePath
-
 	} else {
-		// Scenariusz D: DUPLICATE (Copy)
-		// Tutaj tworzymy nowy asset, więc processNewAsset jest OK.
 		s.logger.Info("👯 Duplicate Detected (Copy)", "original_id", exist.ID, "new_copy_path", job.Path)
 		s.processNewAsset(ctx, result, job, fileType, hash)
 	}
@@ -324,7 +307,7 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 
 func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-chan ScanResult) map[string]bool {
 	const batchSize = 100
-	const emitAfter = 30 // UI update frequency
+	const emitAfter = 30
 	buff := make([]ScanResult, 0, batchSize)
 	processed := make(map[string]bool)
 
@@ -332,7 +315,6 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 
 	flush := func() {
 		if len(buff) > 0 {
-			// s.logger.Info("Flushing batch to DB", "count", len(buff))
 			err := s.ApplyBatch(ctx, buff)
 			if err != nil {
 				s.logger.Error("Batch operation failed", "error", err)
@@ -347,18 +329,14 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 		} else {
 			s.logger.Debug("File scanned", "path", result.Path)
 		}
-		// Dodajemy do bufora jeśli jest co zapisać (Nowy LUB Zmodyfikowany)
 		if result.NewAsset != nil || result.ModifiedAsset != nil {
 			buff = append(buff, result)
 		}
-
-		// Logika cache'owania ścieżek
 		if result.ExistingPath != "" {
 			processed[result.ExistingPath] = true
 		} else {
 			processed[result.Path] = true
 		}
-
 		if len(buff) >= batchSize {
 			flush()
 		}
@@ -381,7 +359,6 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 	}
 
 	for _, item := range buffer {
-		// 1. INSERT
 		if item.NewAsset != nil {
 			_, err := qtx.CreateAsset(ctx, *item.NewAsset)
 			if err != nil {
@@ -389,8 +366,6 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 				continue
 			}
 		}
-
-		// 2. UPDATE (Patch)
 		if item.ModifiedAsset != nil {
 			_, err := qtx.UpdateAssetFromScan(ctx, *item.ModifiedAsset)
 			if err != nil {
@@ -407,9 +382,7 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 	if s.ctx != nil {
 		notifyCtx = s.ctx
 	}
-
 	s.notifier.EmitAssetsChanged(notifyCtx)
-
 	return nil
 }
 
@@ -464,7 +437,6 @@ func (s *Scanner) scanDirectory(scanCtx context.Context, folder database.ScanFol
 
 		ext := filepath.Ext(path)
 		if isAllowed := s.IsExtensionAllowed(ext); !isAllowed {
-			s.logger.Debug("Extension not allowed", "path", path)
 			return nil
 		}
 		job := ScanJob{
@@ -487,7 +459,6 @@ func (s *Scanner) scanDirectory(scanCtx context.Context, folder database.ScanFol
 	return nil
 }
 
-// ScanFile przetwarza pojedynczy plik zgłoszony przez Watchera
 func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 	s.logger.Info("⚡ Live Scan triggered", "path", path)
 
@@ -501,7 +472,7 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 	fileMissing := os.IsNotExist(statErr)
 	asset, dbErr := s.db.GetAssetByPath(ctx, path)
 	isKnown := dbErr == nil && asset.ID > 0
-	// --- SCENARIUSZ 1: USUWANIE (Live Delete) ---
+
 	if fileMissing {
 		if isKnown && !asset.IsDeleted {
 			s.logger.Info("🗑️ Soft Deleting asset", "path", path)
@@ -513,7 +484,8 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 		s.logger.Warn("File access error during live scan", "path", path, "error", statErr)
 		return nil
 	}
-	hash, err := CalculateFileHash(path, s.config.MaxAllowHashFileSize)
+
+	hash, err := CalculateFileHash(path, s.config.GetMaxHashFileSize())
 	if err != nil {
 		s.logger.Warn("Hashing failed (likely locked or too big)", "error", err)
 	}
@@ -523,23 +495,18 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 	folderID, err := s.resolveFolderID(ctx, path)
 	if err != nil {
 		s.logger.Warn("Could not resolve ScanFolder ID for file", "path", path)
-		// Kontynuujemy z folderID = 0 (baza obsłuży to jako NULL)
 	}
 
-	// 6. Przygotowanie Joba z Adapterem!
 	fileType := DetermineFileType(ext)
 	job := ScanJob{
 		Path:     path,
 		FolderId: folderID,
-		Entry:    fileInfoEntry{info: info}, // <--- TU JEST MAGIA ADAPTERA
+		Entry:    fileInfoEntry{info: info},
 	}
 
 	if isKnown {
-		// Update / Move / Resurrect
 		s.processExistingAsset(ctx, &result, asset, job, fileType, hash)
 	} else {
-		// Insert
-		// Próbujemy jeszcze znaleźć po hashu (może to rename/move, którego nie złapaliśmy po ścieżce)
 		if hash != "" {
 			existingByHash, err := s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
 			if err == nil && existingByHash.ID > 0 {
@@ -558,6 +525,7 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 
 	return nil
 }
+
 func (s *Scanner) resolveFolderID(ctx context.Context, filePath string) (int64, error) {
 	folders, err := s.db.ListScanFolders(ctx)
 	if err != nil {
@@ -566,7 +534,6 @@ func (s *Scanner) resolveFolderID(ctx context.Context, filePath string) (int64, 
 
 	var bestMatchID int64
 	longestPrefixLen := 0
-
 	cleanPath := filepath.Clean(filePath)
 
 	for _, f := range folders {
@@ -586,6 +553,7 @@ func (s *Scanner) resolveFolderID(ctx context.Context, filePath string) (int64, 
 
 	return bestMatchID, nil
 }
+
 func (s *Scanner) ListenToWatcher(events <-chan string) {
 	s.logger.Info("🔌 Scanner connected to Watcher events")
 	for path := range events {
@@ -602,6 +570,7 @@ func (s *Scanner) ListenToWatcher(events <-chan string) {
 		}
 	}
 }
+
 func (s *Scanner) getAllFilesCount(folder database.ScanFolder) int {
 	var total = 0
 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {

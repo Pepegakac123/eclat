@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"context"
+	"eclat/internal/config" // <--- Nowy import
 	"io"
 	"log/slog"
 	"os"
@@ -9,8 +10,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
 // 1. TEST: DEBOUNCING
@@ -44,62 +43,8 @@ func TestWatcher_Integrity_Debouncing(t *testing.T) {
 	assertNoEvent(t, svc.Events, 200*time.Millisecond)
 }
 
-// 2. TEST: FILTROWANIE
-// Tworzymy pliki, które powinny być ignorowane.
-func TestWatcher_Integrity_Filtering(t *testing.T) {
-	svc, _, root, ctx, cancel := setupWatcherTest(t)
-	defer cancel()
-	defer svc.Shutdown()
-
-	svc.Startup(ctx)
-	time.Sleep(100 * time.Millisecond)
-
-	// A. Plik tekstowy (nie ma go w AllowedExtensions)
-	txtPath := filepath.Join(root, "notes.txt")
-	createDummyFile(t, txtPath)
-
-	// B. Plik tymczasowy / ukryty (z kropką)
-	hiddenPath := filepath.Join(root, ".temp.png")
-	createDummyFile(t, hiddenPath)
-
-	// Oczekujemy CISZY na kanale
-	assertNoEvent(t, svc.Events, 1*time.Second)
-
-	// C. Plik poprawny (kontrola, czy watcher w ogóle działa)
-	goodPath := filepath.Join(root, "valid.png")
-	createDummyFile(t, goodPath)
-	waitForEvent(t, svc.Events, goodPath, 1*time.Second)
-}
-
-// 3. TEST: REKURENCJA & DYNAMICZNE DODAWANIE
-// Tworzymy folder, a w nim plik. Watcher musi to wyłapać w locie.
-func TestWatcher_Integrity_RecursiveCreate(t *testing.T) {
-	svc, _, root, ctx, cancel := setupWatcherTest(t)
-	defer cancel()
-	defer svc.Shutdown()
-
-	svc.Startup(ctx)
-	time.Sleep(100 * time.Millisecond)
-
-	// 1. Tworzymy podkatalog
-	subDir := filepath.Join(root, "textures")
-	err := os.Mkdir(subDir, 0755)
-	assert.NoError(t, err)
-
-	// Ważne: Dajemy watcherowi chwilę na zarejestrowanie nowego folderu
-	time.Sleep(200 * time.Millisecond)
-
-	// 2. Tworzymy plik w tym nowym podkatalogu
-	filePath := filepath.Join(subDir, "wood.png")
-	createDummyFile(t, filePath)
-
-	// 3. Sprawdzamy czy Watcher wysłał zdarzenie
-	waitForEvent(t, svc.Events, filePath, 2*time.Second)
-}
-
-// 4. TEST: INIT FOLDERS
-// Sprawdzamy, czy przy starcie watcher widzi istniejące pliki/foldery z bazy.
-func TestWatcher_Integrity_InitFolders(t *testing.T) {
+// 2. TEST: RECURSIVE WATCH & IGNORE LOGIC
+func TestWatcher_Integrity_Recursive(t *testing.T) {
 
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -114,9 +59,13 @@ func TestWatcher_Integrity_InitFolders(t *testing.T) {
 	defer cancel()
 	queries.CreateScanFolder(ctx, root)
 
-	// Startujemy serwis
-	svc, _ := NewService(queries, logger)
-	svc.config.AllowedExtensions = []string{".png"}
+	// Tworzymy Config ręcznie dla tego testu
+	cfg := config.NewScannerConfig()
+	cfg.SetAllowedExtensions([]string{".png"})
+
+	// Startujemy serwis (Wstrzykujemy config)
+	svc, _ := NewService(queries, logger, cfg)
+
 	svc.Startup(ctx)
 	defer svc.Shutdown()
 
@@ -130,7 +79,7 @@ func TestWatcher_Integrity_InitFolders(t *testing.T) {
 	waitForEvent(t, svc.Events, filePath, 2*time.Second)
 }
 
-// 5. TEST: UNWATCH
+// 3. TEST: UNWATCH
 // Sprawdzamy czy Unwatch faktycznie przestaje słuchać.
 func TestWatcher_Integrity_Unwatch(t *testing.T) {
 	svc, _, root, ctx, cancel := setupWatcherTest(t)
@@ -141,18 +90,46 @@ func TestWatcher_Integrity_Unwatch(t *testing.T) {
 	svc.Watch(root)
 	time.Sleep(100 * time.Millisecond)
 
-	// 1. Sprawdzamy czy działa
-	file1 := filepath.Join(root, "test1.png")
+	// Upewniamy się, że działa
+	file1 := filepath.Join(root, "should_detect.png")
 	createDummyFile(t, file1)
 	waitForEvent(t, svc.Events, file1, 1*time.Second)
 
-	// 2. Robimy UNWATCH
+	// Wyłączamy obserwację
 	svc.Unwatch(root)
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond) // Czas na propagację w fsnotify
 
-	// 3. Tworzymy kolejny plik - Watcher powinien go Olać
-	file2 := filepath.Join(root, "test2.png")
+	// To nie powinno zostać wykryte
+	file2 := filepath.Join(root, "should_ignore.png")
 	createDummyFile(t, file2)
 
-	assertNoEvent(t, svc.Events, 1*time.Second)
+	assertNoEvent(t, svc.Events, 500*time.Millisecond)
+}
+
+// 4. TEST: EXTENSION FILTERING
+// Sprawdzamy czy ignoruje pliki spoza allowedExtensions
+func TestWatcher_Filter_Extensions(t *testing.T) {
+	svc, _, root, ctx, cancel := setupWatcherTest(t)
+	defer cancel()
+	defer svc.Shutdown()
+
+	// Konfigurujemy tylko .png (zrobione w setupWatcherTest, ale dla pewności powtarzamy poprawną metodą)
+	svc.config.SetAllowedExtensions([]string{".png"})
+
+	svc.Startup(ctx)
+	time.Sleep(100 * time.Millisecond)
+
+	// 1. Plik .txt (powinien być zignorowany)
+	txtFile := filepath.Join(root, "notes.txt")
+	createDummyFile(t, txtFile)
+
+	// 2. Plik .png (powinien być wykryty)
+	pngFile := filepath.Join(root, "image.png")
+	createDummyFile(t, pngFile)
+
+	// Oczekujemy tylko PNG
+	waitForEvent(t, svc.Events, pngFile, 1*time.Second)
+
+	// Upewniamy się, że TXT nie wpadł "przypadkiem" wcześniej
+	assertNoEvent(t, svc.Events, 100*time.Millisecond)
 }

@@ -3,8 +3,9 @@ package settings
 import (
 	"context"
 	"database/sql"
+	"eclat/internal/config"
 	"eclat/internal/database"
-	"eclat/internal/feedback" // Import
+	"eclat/internal/feedback"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -27,6 +28,13 @@ type ScanFolderDTO struct {
 	DateAdded   string  `json:"dateAdded"`
 	IsDeleted   bool    `json:"isDeleted"`
 }
+
+// AppConfigDTO - Struktura do przesyłania ustawień do UI
+type AppConfigDTO struct {
+	AllowedExtensions    []string `json:"allowedExtensions"`
+	MaxAllowHashFileSize int64    `json:"maxAllowHashFileSize"`
+}
+
 type WailsRuntime interface {
 	OpenDirectoryDialog(ctx context.Context, options wailsRuntime.OpenDialogOptions) (string, error)
 }
@@ -47,17 +55,19 @@ type SettingsService struct {
 	ctx      context.Context
 	db       database.Querier
 	logger   *slog.Logger
+	config   *config.ScannerConfig // Wskaźnik na shared config
 	notifier feedback.Notifier
 	wails    WailsRuntime
 	watcher  FolderWatcher
 }
 
 // NewSettingsService tworzy nową instancję serwisu.
-func NewSettingsService(db database.Querier, logger *slog.Logger, notifier feedback.Notifier, watcher FolderWatcher) *SettingsService {
+func NewSettingsService(db database.Querier, logger *slog.Logger, notifier feedback.Notifier, watcher FolderWatcher, cfg *config.ScannerConfig) *SettingsService {
 	return &SettingsService{
 		db:       db,
 		logger:   logger,
 		notifier: notifier,
+		config:   cfg, // Store dependency
 		wails:    &RealWailsRuntime{},
 		watcher:  watcher,
 	}
@@ -68,6 +78,55 @@ func (s *SettingsService) Startup(ctx context.Context) {
 	s.ctx = ctx
 	s.logger.Info("SettingsService started")
 }
+
+// --- CONFIG MANAGEMENT ---
+
+// GetConfig zwraca obecne ustawienia aplikacji (bezpieczna kopia dla UI)
+func (s *SettingsService) GetConfig() AppConfigDTO {
+	return AppConfigDTO{
+		AllowedExtensions:    s.config.GetAllowedExtensions(),
+		MaxAllowHashFileSize: s.config.GetMaxHashFileSize(),
+	}
+}
+
+// SetAllowedExtensions aktualizuje listę rozszerzeń w całej aplikacji
+func (s *SettingsService) SetAllowedExtensions(exts []string) error {
+	var validExts []string
+	var invalidExts []string
+
+	for _, ext := range exts {
+		// Używamy helpera z pakietu config do walidacji (np. odrzucamy .exe)
+		if config.IsExtensionValid(ext) {
+			// Normalizacja (dodanie kropki, małe litery) dzieje się też w configu,
+			// ale tutaj możemy zrobić wstępne czyszczenie
+			normalized := strings.ToLower(ext)
+			if !strings.HasPrefix(normalized, ".") {
+				normalized = "." + normalized
+			}
+			validExts = append(validExts, normalized)
+		} else {
+			invalidExts = append(invalidExts, ext)
+		}
+	}
+
+	if len(invalidExts) > 0 {
+		s.logger.Warn("Attempted to add invalid extensions", "extensions", invalidExts)
+		s.notifier.SendToast(s.ctx, feedback.ToastField{
+			Type:    "warning",
+			Title:   "Invalid Extensions Skipped",
+			Message: fmt.Sprintf("Skipped dangerous/invalid types: %s", strings.Join(invalidExts, ", ")),
+		})
+	}
+
+	// Aktualizujemy Thread-Safe Config
+	// To natychmiast wpłynie na Scannera i Watchera, bo korzystają z tej samej instancji!
+	s.config.SetAllowedExtensions(validExts)
+
+	s.logger.Info("Extensions updated", "count", len(validExts))
+	return nil
+}
+
+// --- FOLDER MANAGEMENT ---
 
 func (s *SettingsService) GetFolders() ([]ScanFolderDTO, error) {
 	folders, err := s.db.ListScanFolders(s.ctx)
@@ -84,7 +143,6 @@ func (s *SettingsService) GetFolders() ([]ScanFolderDTO, error) {
 
 // UpdateFolderStatus toggles the active state of a folder and updates visibility of its assets.
 func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (ScanFolderDTO, error) {
-
 	err := s.db.UpdateScanFolderStatus(s.ctx, database.UpdateScanFolderStatusParams{
 		IsActive: isActive,
 		ID:       id,
@@ -105,7 +163,6 @@ func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (ScanFolde
 		s.logger.Error("Failed to update assets visibility", "folderId", id, "error", err)
 	}
 
-	// C. UI Feedback (Toast)
 	statusMsg := "restored"
 	if !isActive {
 		statusMsg = "hidden"
@@ -122,6 +179,7 @@ func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (ScanFolde
 	}
 	return s.mapToDTO(updatedFolder), nil
 }
+
 func boolToStatus(active bool) string {
 	if active {
 		return "Active"
@@ -163,7 +221,6 @@ func (s *SettingsService) DeleteFolder(id int64) error {
 }
 
 // AddFolder - Z obsługą przywracania (Restore)
-// --- ZMIANA: Zwracamy ScanFolderDTO ---
 func (s *SettingsService) AddFolder(path string) (ScanFolderDTO, error) {
 	if !s.ValidatePath(path) {
 		return ScanFolderDTO{}, errors.New("folder does not exist")
@@ -220,8 +277,8 @@ func (s *SettingsService) mapToDTO(f database.ScanFolder) ScanFolderDTO {
 		ID:          f.ID,
 		Path:        f.Path,
 		IsActive:    f.IsActive,
-		LastScanned: lastScannedStr,                   // Teraz to *string
-		DateAdded:   f.DateAdded.Format(time.RFC3339), // Teraz to string
+		LastScanned: lastScannedStr,
+		DateAdded:   f.DateAdded.Format(time.RFC3339),
 		IsDeleted:   f.IsDeleted,
 	}
 }

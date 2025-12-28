@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -23,14 +22,15 @@ type Service struct {
 	logger       *slog.Logger
 	ctx          context.Context
 	db           database.Querier
-	config       *config.ScannerConfig
+	config       *config.ScannerConfig // Wskaźnik na współdzielony config
 	Events       chan string
 	watchedPaths map[string]bool
 	timers       map[string]*time.Timer
 	mu           sync.Mutex
 }
 
-func NewService(db database.Querier, logger *slog.Logger) (*Service, error) {
+// NewService - Zaktualizowana sygnatura: przyjmuje config!
+func NewService(db database.Querier, logger *slog.Logger, cfg *config.ScannerConfig) (*Service, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func NewService(db database.Querier, logger *slog.Logger) (*Service, error) {
 		watcher:      w,
 		logger:       logger,
 		db:           db,
-		config:       config.NewScannerConfig(),
+		config:       cfg, // Używamy wstrzykniętego configu
 		Events:       make(chan string, 1000),
 		timers:       make(map[string]*time.Timer),
 		watchedPaths: make(map[string]bool),
@@ -67,7 +67,6 @@ func (s *Service) Shutdown() {
 	close(s.Events)
 }
 
-// initFolders pobiera główne foldery z bazy i uruchamia dla nich rekursywne obserwowanie
 func (s *Service) initFolders() error {
 	folders, err := s.db.ListScanFolders(s.ctx)
 	if err != nil {
@@ -123,7 +122,6 @@ func (s *Service) addWatch(path string) error {
 	}
 
 	s.watchedPaths[path] = true
-	// s.logger.Debug("Watching", "path", path) // debug
 	return nil
 }
 
@@ -134,9 +132,7 @@ func (s *Service) unwatchRecursive(root string) {
 	cleanRoot := filepath.Clean(root)
 
 	for path := range s.watchedPaths {
-
 		if path == cleanRoot || strings.HasPrefix(path, cleanRoot+string(os.PathSeparator)) {
-
 			if err := s.watcher.Remove(path); err != nil {
 				s.logger.Debug("Failed to remove fsnotify watch", "path", path, "error", err)
 			}
@@ -144,8 +140,6 @@ func (s *Service) unwatchRecursive(root string) {
 		}
 	}
 }
-
-// --- EVENT LOOP & OPTIMIZATION ---
 
 func (s *Service) startLoop() {
 	s.logger.Info("👂 Watcher loop started")
@@ -155,7 +149,6 @@ func (s *Service) startLoop() {
 			if !ok {
 				return
 			}
-			// s.logger.Info("🔍 RAW EVENT", "op", event.Op.String(), "path", event.Name) Debug
 			if event.Has(fsnotify.Create) && s.isDir(event.Name) {
 				s.logger.Info("🆕 New directory detected", "path", event.Name)
 				go func(p string) {
@@ -193,8 +186,8 @@ func (s *Service) startLoop() {
 }
 
 func (s *Service) isExtensionAllowed(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return slices.Contains(s.config.AllowedExtensions, ext)
+	// Delegujemy do Thread-Safe metody z configu
+	return s.config.IsExtensionAllowed(path)
 }
 
 func (s *Service) triggerDebounce(path string) {
@@ -211,14 +204,12 @@ func (s *Service) triggerDebounce(path string) {
 		s.mu.Unlock()
 		_, err := os.Stat(path)
 
-		// Scenariusz A: Plik istnieje (Create/Write/Rename-Target)
 		if err == nil {
 			s.logger.Info(" File ready for scan", "path", path)
 			s.sendEvent(path)
 			return
 		}
 
-		// Scenariusz B: Plik NIE istnieje (Delete/Rename-Source)
 		if os.IsNotExist(err) {
 			s.logger.Info("File deletion detected", "path", path)
 			s.sendEvent(path)

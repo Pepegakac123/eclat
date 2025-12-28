@@ -7,17 +7,17 @@ import (
 	"strings"
 )
 
-// GetConfig returns a thread-safe copy of configuration
-func (s *Scanner) GetConfig() config.ScannerConfig {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// ScannerConfigSnapshot to struktura publiczna (DTO) dla Frontendu.
+type ScannerConfigSnapshot struct {
+	AllowedExtensions    []string `json:"allowedExtensions"`
+	MaxAllowHashFileSize int64    `json:"maxAllowHashFileSize"`
+}
 
-	safeExts := make([]string, len(s.config.AllowedExtensions))
-	copy(safeExts, s.config.AllowedExtensions)
-
-	return config.ScannerConfig{
-		AllowedExtensions:    safeExts,
-		MaxAllowHashFileSize: s.config.MaxAllowHashFileSize,
+// GetConfig returns a thread-safe snapshot of configuration for the UI
+func (s *Scanner) GetConfig() ScannerConfigSnapshot {
+	return ScannerConfigSnapshot{
+		AllowedExtensions:    s.config.GetAllowedExtensions(),
+		MaxAllowHashFileSize: s.config.GetMaxHashFileSize(),
 	}
 }
 
@@ -28,55 +28,67 @@ func (s *Scanner) GetPredefinedPalette() []config.PaletteColor {
 
 // IsExtensionAllowed checks if file should be scanned
 func (s *Scanner) IsExtensionAllowed(ext string) bool {
-	normalized := strings.ToLower(ext)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return slices.Contains(s.config.AllowedExtensions, normalized)
+	// Delegujemy do configa - on ma RLocka w środku.
+	return s.config.IsExtensionAllowed(ext)
 }
 
 // AddExtensions safely adds new extensions
 func (s *Scanner) AddExtensions(exts []string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	// 1. Walidacja (statyczna, nie wymaga locka)
 	var invalidExts []string
 	if len(exts) <= 0 {
 		return nil
 	}
 
 	for _, ext := range exts {
-		normalized := strings.ToLower(ext)
-		if !strings.HasPrefix(normalized, ".") {
-			normalized = "." + normalized
-		}
-
-		if !config.IsExtensionValid(normalized) {
+		if !config.IsExtensionValid(ext) {
 			invalidExts = append(invalidExts, ext)
-			continue
-		}
-
-		if !slices.Contains(s.config.AllowedExtensions, normalized) {
-			s.config.AllowedExtensions = append(s.config.AllowedExtensions, normalized)
 		}
 	}
 
 	if len(invalidExts) > 0 {
 		return fmt.Errorf("invalid or dangerous extensions: %s", strings.Join(invalidExts, ", "))
 	}
+
+	// 2. Pobieramy obecny stan (Thread-Safe Copy)
+	currentExts := s.config.GetAllowedExtensions()
+	modified := false
+
+	// 3. Modyfikujemy lokalną kopię
+	for _, ext := range exts {
+		normalized := strings.ToLower(ext)
+		if !strings.HasPrefix(normalized, ".") {
+			normalized = "." + normalized
+		}
+
+		if !slices.Contains(currentExts, normalized) {
+			currentExts = append(currentExts, normalized)
+			modified = true
+		}
+	}
+
+	if modified {
+		s.config.SetAllowedExtensions(currentExts)
+	}
+
 	return nil
 }
 
 // RemoveExtension removes extension from allowed list
 func (s *Scanner) RemoveExtension(ext string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	normalized := strings.ToLower(ext)
 	if !strings.HasPrefix(normalized, ".") {
 		normalized = "." + normalized
 	}
 
-	s.config.AllowedExtensions = slices.DeleteFunc(s.config.AllowedExtensions, func(e string) bool {
+	currentExts := s.config.GetAllowedExtensions()
+
+	newExts := slices.DeleteFunc(currentExts, func(e string) bool {
 		return e == normalized
 	})
+
+	// Jeśli długość się zmieniła, aktualizujemy
+	if len(newExts) != len(currentExts) {
+		s.config.SetAllowedExtensions(newExts)
+	}
 }

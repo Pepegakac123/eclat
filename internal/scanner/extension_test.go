@@ -1,20 +1,20 @@
 package scanner
 
 import (
-	"eclat/internal/config" // <-- Musimy zaimportować definicje danych
+	"eclat/internal/config"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestScanner_ExtensionLogic(t *testing.T) {
-	// Konstruujemy Scanner "na brudno" tylko do testu.
-	// Ponieważ jesteśmy w pakiecie 'scanner', mamy dostęp do prywatnego pola 'config'.
+	cfg := config.NewScannerConfig()
+
+	// Stan początkowy
+	cfg.SetAllowedExtensions([]string{".jpg", ".png"})
+
 	scanner := &Scanner{
-		config: &config.ScannerConfig{
-			AllowedExtensions: []string{".jpg", ".png"},
-			// MaxAllowHashFileSize: 0, // opcjonalne, w tym teście nieistotne
-		},
+		config: cfg,
 	}
 
 	t.Run("Should allow valid extension", func(t *testing.T) {
@@ -53,23 +53,41 @@ func TestScanner_ExtensionLogic(t *testing.T) {
 	})
 
 	t.Run("AddExtensions - Deduplication", func(t *testing.T) {
-		initialCount := len(scanner.config.AllowedExtensions)
+		// Pobieramy stan przez publiczne API
+		initialCount := len(scanner.GetConfig().AllowedExtensions)
 
 		err := scanner.AddExtensions([]string{".jpg", "PNG"})
 		assert.NoError(t, err)
 
-		// Sprawdzamy czy długość się nie zmieniła (bo próbowaliśmy dodać to co już jest)
-		assert.Equal(t, initialCount, len(scanner.config.AllowedExtensions), "Nie powinno dodać duplikatów")
+		finalCount := len(scanner.GetConfig().AllowedExtensions)
+		assert.Equal(t, initialCount, finalCount, "Nie powinno dodać duplikatów")
 	})
 
 	t.Run("RemoveExtension", func(t *testing.T) {
-		// Reset stanu dla pewności
-		scanner.AddExtensions([]string{".jpg", ".png"})
+		// Reset stanu przed testem usuwania
+		cfg.SetAllowedExtensions([]string{".jpg", ".png"})
 
 		scanner.RemoveExtension(".jpg")
 		assert.False(t, scanner.IsExtensionAllowed(".jpg"))
 
 		scanner.RemoveExtension("png") // Test usuwania bez kropki
 		assert.False(t, scanner.IsExtensionAllowed(".png"))
+	})
+
+	t.Run("GetConfig returns Snapshot", func(t *testing.T) {
+		// NAPRAWA: Musimy upewnić się, że mamy dane testowe, bo poprzedni test (RemoveExtension) wyczyścił wszystko!
+		cfg.SetAllowedExtensions([]string{".png", ".jpg"})
+
+		snapshot := scanner.GetConfig()
+
+		// Sprawdzamy czy snapshot zawiera dane
+		assert.Contains(t, snapshot.AllowedExtensions, ".png")
+
+		// Sprawdzamy czy modyfikacja snapshota nie psuje oryginału (izolacja)
+		// Upewniamy się, że tablica nie jest pusta przed indeksem (dla bezpieczeństwa testu)
+		if assert.NotEmpty(t, snapshot.AllowedExtensions) {
+			snapshot.AllowedExtensions[0] = ".HACKED"
+			assert.False(t, scanner.IsExtensionAllowed(".HACKED"), "Modyfikacja DTO nie powinna wpływać na Scanner")
+		}
 	})
 }

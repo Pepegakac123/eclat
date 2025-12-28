@@ -3,6 +3,7 @@ package watcher
 import (
 	"context"
 	"database/sql"
+	"eclat/internal/config" // <--- Nowy import
 	"eclat/internal/database"
 	"io"
 	"log/slog"
@@ -27,6 +28,7 @@ func setupTestDB(t *testing.T) (*sql.DB, database.Querier) {
 		t.Fatal(err)
 	}
 
+	// Zakładam, że ścieżka do migracji jest poprawna względem lokalizacji testu
 	if err := goose.Up(db, "../../sql/schema"); err != nil {
 		t.Fatal("Failed to migrate DB:", err)
 	}
@@ -46,13 +48,15 @@ func setupWatcherTest(t *testing.T) (*Service, database.Querier, string, context
 	// 3. Folder tymczasowy
 	rootDir := t.TempDir()
 
-	// 4. Konfiguracja i utworzenie serwisu
-	svc, err := NewService(queries, logger)
+	// 4. Konfiguracja (Nowość: Tworzymy obiekt i ustawiamy go setterem)
+	cfg := config.NewScannerConfig()
+	cfg.SetAllowedExtensions([]string{".png"}) // Ustawiamy testowe rozszerzenie
+
+	// 5. Konfiguracja i utworzenie serwisu (Wstrzykujemy config)
+	svc, err := NewService(queries, logger, cfg)
 	assert.NoError(t, err)
 
-	svc.config.AllowedExtensions = []string{".png"}
-
-	// 5. Dodajemy folder root do bazy, żeby initFolders zadziałało
+	// 6. Dodajemy folder root do bazy, żeby initFolders zadziałało
 	ctx, cancel := context.WithCancel(context.Background())
 	_, err = queries.CreateScanFolder(ctx, rootDir)
 	assert.NoError(t, err)
@@ -78,16 +82,16 @@ func waitForEvent(t *testing.T, ch <-chan string, expectedPath string, timeout t
 	case received := <-ch:
 		assert.Equal(t, expectedPath, received, "Otrzymano zdarzenie dla złej ścieżki")
 	case <-time.After(timeout):
-		t.Fatalf("Timeout: Nie otrzymano zdarzenia dla %s w czasie %v", expectedPath, timeout)
+		t.Fatalf("Timeout waiting for event: %s", expectedPath)
 	}
 }
 
-// assertNoEvent - Helper upewniający się, że kanał milczy
-func assertNoEvent(t *testing.T, ch <-chan string, waitTime time.Duration) {
+// assertNoEvent - Upewnia się, że kanał milczy
+func assertNoEvent(t *testing.T, ch <-chan string, duration time.Duration) {
 	select {
-	case received := <-ch:
-		t.Fatalf("Otrzymano niespodziewane zdarzenie dla: %s", received)
-	case <-time.After(waitTime):
-		// Sukces - cisza
+	case event := <-ch:
+		t.Fatalf("Unexpected event received: %s", event)
+	case <-time.After(duration):
+		// OK
 	}
 }
