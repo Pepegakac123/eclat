@@ -36,6 +36,7 @@ export namespace database {
 	    lastModified: any;
 	    // Go type: time
 	    lastScanned: any;
+	    groupId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CreateAssetParams(source);
@@ -57,6 +58,7 @@ export namespace database {
 	        this.hasAlphaChannel = this.convertValues(source["hasAlphaChannel"], sql.NullBool);
 	        this.lastModified = this.convertValues(source["lastModified"], null);
 	        this.lastScanned = this.convertValues(source["lastScanned"], null);
+	        this.groupId = source["groupId"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

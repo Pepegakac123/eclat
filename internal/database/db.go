@@ -63,6 +63,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteSavedSearchStmt, err = db.PrepareContext(ctx, deleteSavedSearch); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSavedSearch: %w", err)
 	}
+	if q.findPotentialSiblingsStmt, err = db.PrepareContext(ctx, findPotentialSiblings); err != nil {
+		return nil, fmt.Errorf("error preparing query FindPotentialSiblings: %w", err)
+	}
 	if q.getAllColorsStmt, err = db.PrepareContext(ctx, getAllColors); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllColors: %w", err)
 	}
@@ -260,6 +263,11 @@ func (q *Queries) Close() error {
 	if q.deleteSavedSearchStmt != nil {
 		if cerr := q.deleteSavedSearchStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteSavedSearchStmt: %w", cerr)
+		}
+	}
+	if q.findPotentialSiblingsStmt != nil {
+		if cerr := q.findPotentialSiblingsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing findPotentialSiblingsStmt: %w", cerr)
 		}
 	}
 	if q.getAllColorsStmt != nil {
@@ -529,6 +537,7 @@ type Queries struct {
 	deleteAssetPermanentStmt          *sql.Stmt
 	deleteMaterialSetStmt             *sql.Stmt
 	deleteSavedSearchStmt             *sql.Stmt
+	findPotentialSiblingsStmt         *sql.Stmt
 	getAllColorsStmt                  *sql.Stmt
 	getAssetByHashStmt                *sql.Stmt
 	getAssetByIdStmt                  *sql.Stmt
@@ -591,6 +600,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteAssetPermanentStmt:          q.deleteAssetPermanentStmt,
 		deleteMaterialSetStmt:             q.deleteMaterialSetStmt,
 		deleteSavedSearchStmt:             q.deleteSavedSearchStmt,
+		findPotentialSiblingsStmt:         q.findPotentialSiblingsStmt,
 		getAllColorsStmt:                  q.getAllColorsStmt,
 		getAssetByHashStmt:                q.getAssetByHashStmt,
 		getAssetByIdStmt:                  q.getAssetByIdStmt,

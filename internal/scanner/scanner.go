@@ -16,19 +16,23 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Scanner struct {
-	mu         sync.RWMutex
-	db         database.Querier
-	conn       *sql.DB
-	logger     *slog.Logger
-	cancelFunc context.CancelFunc
-	config     *config.ScannerConfig // Wskaźnik na współdzielony config
-	isScanning atomic.Bool
-	thumbGen   ThumbnailGenerator
-	ctx        context.Context
-	notifier   feedback.Notifier
+	mu           sync.RWMutex
+	db           database.Querier
+	conn         *sql.DB
+	logger       *slog.Logger
+	cancelFunc   context.CancelFunc
+	config       *config.ScannerConfig // Wskaźnik na współdzielony config
+	isScanning   atomic.Bool
+	thumbGen     ThumbnailGenerator
+	ctx          context.Context
+	notifier     feedback.Notifier
+	sessionMu    sync.Mutex
+	sessionCache map[string]string
 }
 
 type ScanJob struct {
@@ -67,12 +71,13 @@ func (s *Scanner) Shutdown() {
 // NewScanner - Zaktualizowana sygnatura: przyjmuje config!
 func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger, notifier feedback.Notifier, cfg *config.ScannerConfig) *Scanner {
 	return &Scanner{
-		conn:     conn,
-		db:       db,
-		logger:   logger,
-		config:   cfg,
-		thumbGen: thumbGen,
-		notifier: notifier,
+		conn:         conn,
+		db:           db,
+		logger:       logger,
+		config:       cfg,
+		thumbGen:     thumbGen,
+		notifier:     notifier,
+		sessionCache: make(map[string]string),
 	}
 }
 
@@ -91,7 +96,12 @@ func (s *Scanner) StartScan() error {
 	s.isScanning.Store(true)
 	scanCtx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
-
+	// Inicjalizacja cache sesji
+	s.sessionMu.Lock()
+	// Można zrobić make() ponownie, żeby GC posprzątał starą, to jest bezpieczne
+	// o ile NewScanner zapewnia, że pole nie jest nil na starcie.
+	s.sessionCache = make(map[string]string)
+	s.sessionMu.Unlock()
 	jobs := make(chan ScanJob, 100)
 	results := make(chan ScanResult, 100)
 
@@ -227,7 +237,58 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 
 	s.logger.Debug("New asset detected", "path", job.Path)
 
-	newAsset, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash)
+	targetGroupID := ""
+	foundMatch := false
+
+	// === PLAN A: EXACT MATCH (HASH) - DB LOOKUP ===
+	if hash != "" {
+		existingDuplicate, err := s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
+		if err == nil {
+			s.logger.Info("🔗 Exact Duplicate found (DB)",
+				"new_path", job.Path,
+				"group_id", existingDuplicate.GroupID)
+			targetGroupID = existingDuplicate.GroupID
+			foundMatch = true
+		}
+	}
+
+	// === PLAN A.5: EXACT MATCH (HASH) - SESSION CACHE LOOKUP ===
+	// Jeśli nie ma w bazie, może inny worker właśnie to przetwarza?
+	if !foundMatch && hash != "" {
+		s.sessionMu.Lock()
+		if cachedGroupID, ok := s.sessionCache[hash]; ok {
+			s.logger.Info("🔗 Exact Duplicate found (Session Cache)",
+				"new_path", job.Path,
+				"group_id", cachedGroupID)
+			targetGroupID = cachedGroupID
+			foundMatch = true
+		}
+		s.sessionMu.Unlock()
+	}
+
+	// === PLAN B: HEURISTIC MATCH (NAME) ===
+	if !foundMatch {
+		matchedGroupID, found := s.TryHeuristicMatch(ctx, job.FolderId, job.Entry.Name())
+		if found {
+			s.logger.Info("🧠 Heuristic Match found (Name)",
+				"new_path", job.Path,
+				"group_id", matchedGroupID)
+			targetGroupID = matchedGroupID
+			foundMatch = true
+		}
+	}
+
+	// Jeśli nadal nic nie znaleźliśmy, generujemy nowe ID
+	if !foundMatch {
+		targetGroupID = uuid.New().String()
+		if hash != "" {
+			s.sessionMu.Lock()
+			s.sessionCache[hash] = targetGroupID
+			s.sessionMu.Unlock()
+		}
+	}
+
+	newAsset, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash, targetGroupID)
 	if err != nil {
 		s.logger.Warn("Failed to generate metadata for new asset", "path", job.Path, "error", err)
 		result.Err = err
@@ -256,7 +317,7 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 			if dbTime != diskTime || isResurrected {
 				s.logger.Info("📝 File Content Changed or Resurrected: Refreshing metadata", "path", job.Path)
 
-				meta, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash)
+				meta, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash, exist.GroupID)
 				if err == nil {
 					modifiedAsset := &database.UpdateAssetFromScanParams{
 						ID:              exist.ID,
@@ -386,7 +447,7 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 	return nil
 }
 
-func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string) (database.CreateAssetParams, error) {
+func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string, targetGroupID string) (database.CreateAssetParams, error) {
 	thumb, err := s.thumbGen.Generate(ctx, path)
 	if err != nil {
 		s.logger.Debug("Failed to generate thumbnail", "path", path, "error", err)
@@ -399,9 +460,9 @@ func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry 
 	}
 
 	hasValidDimensions := thumb.Metadata.Width > 0 && thumb.Metadata.Height > 0
-
 	newAsset := database.CreateAssetParams{
 		ScanFolderID:    sql.NullInt64{Int64: folderId, Valid: true},
+		GroupID:         targetGroupID,
 		FileName:        entry.Name(),
 		FilePath:        path,
 		FileType:        filetype,
@@ -503,20 +564,12 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 		FolderId: folderID,
 		Entry:    fileInfoEntry{info: info},
 	}
-
 	if isKnown {
+		// Scenariusz 1: Plik jest w bazie pod tą ścieżką.
 		s.processExistingAsset(ctx, &result, asset, job, fileType, hash)
 	} else {
-		if hash != "" {
-			existingByHash, err := s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
-			if err == nil && existingByHash.ID > 0 {
-				s.processExistingAsset(ctx, &result, existingByHash, job, fileType, hash)
-			} else {
-				s.processNewAsset(ctx, &result, job, fileType, hash)
-			}
-		} else {
-			s.processNewAsset(ctx, &result, job, fileType, hash)
-		}
+		// Scenariusz 2: Plik nie jest w bazie pod tą ścieżką.
+		s.processNewAsset(ctx, &result, job, fileType, hash)
 	}
 
 	if result.NewAsset != nil || result.ModifiedAsset != nil {

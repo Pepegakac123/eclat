@@ -249,3 +249,74 @@ func TestScanner_Live_ScanFile_Delete(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, deletedAsset.IsDeleted, "Asset powinien mieć flagę IsDeleted=true")
 }
+func TestIntegration_DuplicateGrouping(t *testing.T) {
+	_, queries, scanner, root := setupLogicTest(t)
+	ctx := context.Background()
+
+	// 1. Tworzymy plik Oryginał
+	originPath := filepath.Join(root, "Original.txt")
+	createContentFile(t, originPath, "unikalna treść pliku tekstowego")
+
+	// 2. Tworzymy plik Kopia (inna nazwa, ta sama treść = ten sam Hash)
+	copyPath := filepath.Join(root, "Backup.txt")
+	createContentFile(t, copyPath, "unikalna treść pliku tekstowego")
+
+	// 3. Uruchamiamy PEŁNY SKAN
+	err := scanner.StartScan()
+	assert.NoError(t, err)
+
+	// 4. Weryfikacja
+	assert.Eventually(t, func() bool {
+		assets, err := queries.ListAssetsForCache(ctx)
+		if err != nil || len(assets) != 2 {
+			return false
+		}
+
+		// Pobieramy oba assety
+		originAsset, _ := queries.GetAssetByPath(ctx, originPath)
+		copyAsset, _ := queries.GetAssetByPath(ctx, copyPath)
+
+		// Muszą mieć różne ID (bo to dwa pliki)
+		if originAsset.ID == copyAsset.ID {
+			return false
+		}
+
+		// Muszą mieć TO SAMO GroupID (bo to duplikaty)
+		return originAsset.GroupID == copyAsset.GroupID
+	}, 2*time.Second, 50*time.Millisecond, "Skaner nie połączył plików o tym samym hashu w jedną grupę")
+}
+
+// TestIntegration_LiveScan_Heuristic sprawdza Watchera + Heurystykę.
+// Scenariusz: Użytkownik zapisuje plik, Watcher go łapie, potem zapisuje nowszą wersję.
+func TestIntegration_LiveScan_Heuristic(t *testing.T) {
+	_, queries, scanner, root := setupLogicTest(t)
+	ctx := context.Background()
+
+	// 1. Symulacja: Użytkownik wrzuca plik v1
+	v1Path := filepath.Join(root, "Project_Logo_v1.png")
+	createContentFile(t, v1Path, "image data v1")
+
+	// Live Scan dla v1
+	err := scanner.ScanFile(ctx, v1Path)
+	assert.NoError(t, err)
+
+	// Pobieramy GroupID v1
+	v1Asset, err := queries.GetAssetByPath(ctx, v1Path)
+	assert.NoError(t, err)
+	groupID := v1Asset.GroupID
+	assert.NotEmpty(t, groupID)
+
+	// 2. Symulacja: Użytkownik wrzuca plik v2 (inna treść, więc hash inny, ale nazwa podobna)
+	v2Path := filepath.Join(root, "Project_Logo_v2.png")
+	createContentFile(t, v2Path, "image data v2 completely different content")
+
+	// Live Scan dla v2
+	err = scanner.ScanFile(ctx, v2Path)
+	assert.NoError(t, err)
+
+	// 3. Weryfikacja: Czy v2 podpięło się pod v1?
+	v2Asset, err := queries.GetAssetByPath(ctx, v2Path)
+	assert.NoError(t, err)
+
+	assert.Equal(t, groupID, v2Asset.GroupID, "Plik v2 powinien odziedziczyć GroupID od v1 dzięki heurystyce nazwy")
+}

@@ -3,9 +3,9 @@ INSERT INTO assets (
     scan_folder_id, file_name, file_path, file_type, file_size,
     thumbnail_path, file_hash,
     image_width, image_height, dominant_color, bit_depth, has_alpha_channel,
-    last_modified, last_scanned
+    last_modified, last_scanned,group_id
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?
 )
 RETURNING *;
 
@@ -203,3 +203,11 @@ UPDATE assets
 SET scan_folder_id = ?
 WHERE file_path LIKE ? || '%'
 AND scan_folder_id != ?;
+
+-- name: FindPotentialSiblings :many
+SELECT id, group_id, file_name
+FROM assets
+WHERE scan_folder_id = ?
+  AND file_name LIKE ?
+  AND id != ?
+LIMIT 50;

@@ -31,4 +31,6 @@ export function Startup(arg1:context.Context):Promise<void>;
 
 export function StopScan():Promise<void>;
 
+export function TryHeuristicMatch(arg1:context.Context,arg2:number,arg3:string):Promise<string|boolean>;
+
 export function Worker(arg1:context.Context,arg2:sync.WaitGroup,arg3:any,arg4:any):Promise<void>;

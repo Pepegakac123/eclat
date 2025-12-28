@@ -23,6 +23,7 @@ type Querier interface {
 	DeleteAssetPermanent(ctx context.Context, id int64) error
 	DeleteMaterialSet(ctx context.Context, id int64) error
 	DeleteSavedSearch(ctx context.Context, id int64) error
+	FindPotentialSiblings(ctx context.Context, arg FindPotentialSiblingsParams) ([]FindPotentialSiblingsRow, error)
 	GetAllColors(ctx context.Context) ([]sql.NullString, error)
 	GetAssetByHash(ctx context.Context, fileHash sql.NullString) (Asset, error)
 	GetAssetById(ctx context.Context, id int64) (Asset, error)
