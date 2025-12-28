@@ -12,7 +12,7 @@ import (
 type Asset struct {
 	ID              int64          `json:"id"`
 	ScanFolderID    sql.NullInt64  `json:"scanFolderId"`
-	ParentAssetID   sql.NullInt64  `json:"parentAssetId"`
+	GroupID         string         `json:"groupId"`
 	FileName        string         `json:"fileName"`
 	FilePath        string         `json:"filePath"`
 	FileType        string         `json:"fileType"`

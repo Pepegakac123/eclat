@@ -16,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Scanner struct {
@@ -399,9 +401,10 @@ func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry 
 	}
 
 	hasValidDimensions := thumb.Metadata.Width > 0 && thumb.Metadata.Height > 0
-
+	newGroupID := uuid.New().String()
 	newAsset := database.CreateAssetParams{
 		ScanFolderID:    sql.NullInt64{Int64: folderId, Valid: true},
+		GroupID:         newGroupID,
 		FileName:        entry.Name(),
 		FilePath:        path,
 		FileType:        filetype,
