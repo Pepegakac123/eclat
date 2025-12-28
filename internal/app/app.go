@@ -10,7 +10,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// App struct
 type App struct {
 	ctx             context.Context
 	logger          *slog.Logger
@@ -19,9 +18,9 @@ type App struct {
 	Watcher         *watcher.Service
 }
 
-func NewApp(scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service) *App {
+func NewApp(logger *slog.Logger, scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service) *App {
 	return &App{
-		logger:          slog.Default(),
+		logger:          logger,
 		Scanner:         scanner,
 		SettingsService: settingsService,
 		Watcher:         watcher,

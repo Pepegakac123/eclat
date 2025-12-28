@@ -7,6 +7,8 @@ export function AddFolder(arg1:string):Promise<settings.ScanFolderDTO>;
 
 export function DeleteFolder(arg1:number):Promise<void>;
 
+export function GetConfig():Promise<settings.AppConfigDTO>;
+
 export function GetFolders():Promise<Array<settings.ScanFolderDTO>>;
 
 export function OpenFile(arg1:string):Promise<void>;
@@ -14,6 +16,8 @@ export function OpenFile(arg1:string):Promise<void>;
 export function OpenFolderPicker():Promise<string>;
 
 export function OpenInExplorer(arg1:string):Promise<void>;
+
+export function SetAllowedExtensions(arg1:Array<string>):Promise<void>;
 
 export function Startup(arg1:context.Context):Promise<void>;
 

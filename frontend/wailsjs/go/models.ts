@@ -14,20 +14,6 @@ export namespace config {
 	        this.hex = source["hex"];
 	    }
 	}
-	export class ScannerConfig {
-	    allowedExtensions: string[];
-	    maxAllowHashFileSize: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new ScannerConfig(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.allowedExtensions = source["allowedExtensions"];
-	        this.maxAllowHashFileSize = source["maxAllowHashFileSize"];
-	    }
-	}
 
 }
 
@@ -190,11 +176,39 @@ export namespace scanner {
 		    return a;
 		}
 	}
+	export class ScannerConfigSnapshot {
+	    allowedExtensions: string[];
+	    maxAllowHashFileSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScannerConfigSnapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.allowedExtensions = source["allowedExtensions"];
+	        this.maxAllowHashFileSize = source["maxAllowHashFileSize"];
+	    }
+	}
 
 }
 
 export namespace settings {
 	
+	export class AppConfigDTO {
+	    allowedExtensions: string[];
+	    maxAllowHashFileSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppConfigDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.allowedExtensions = source["allowedExtensions"];
+	        this.maxAllowHashFileSize = source["maxAllowHashFileSize"];
+	    }
+	}
 	export class ScanFolderDTO {
 	    id: number;
 	    path: string;

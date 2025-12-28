@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"encoding/json"
 	"io"
 	"log"
 	"log/slog"
@@ -10,6 +12,7 @@ import (
 
 	"database/sql"
 	"eclat/internal/app"
+	"eclat/internal/config"
 	"eclat/internal/database"
 	"eclat/internal/feedback"
 	"eclat/internal/scanner"
@@ -75,18 +78,45 @@ func main() {
 		log.Fatal("Failed to run migrations:", err)
 	}
 	queries := database.New(db)
+	sharedConfig := config.NewScannerConfig()
+	ctx := context.Background()
+	programLogger.Info(" Loading system settings...")
+
+	storedExtsJSON, err := queries.GetSystemSetting(ctx, "allowed_extensions")
+	if err == nil && storedExtsJSON != "" {
+		var storedExts []string
+		if err := json.Unmarshal([]byte(storedExtsJSON), &storedExts); err == nil {
+			if len(storedExts) > 0 {
+				programLogger.Info("✅ Restored extensions from DB", "count", len(storedExts))
+				sharedConfig.SetAllowedExtensions(storedExts)
+			} else {
+				programLogger.Info("⚠️ DB extensions list is empty, using defaults")
+			}
+		} else {
+			programLogger.Error("❌ Failed to unmarshal settings from DB, using defaults", "error", err)
+		}
+	} else {
+		programLogger.Info("ℹ️ No custom settings found in DB, using defaults")
+	}
 	notifier := feedback.NewNotifier()
 	diskThumbGen := scanner.NewDiskThumbnailGenerator(thumbsFolder, programLogger)
-	scannerService := scanner.NewScanner(db, queries, diskThumbGen, programLogger, notifier)
 
-	watcherService, err := watcher.NewService(queries, programLogger)
+	// B. Scanner dostaje config
+	scannerService := scanner.NewScanner(db, queries, diskThumbGen, programLogger, notifier, sharedConfig)
+
+	// C. Watcher dostaje config
+	watcherService, err := watcher.NewService(queries, programLogger, sharedConfig)
 	if err != nil {
 		log.Fatal("Failed to create watcher:", err)
 	}
 	defer watcherService.Shutdown()
-	settingsService := settings.NewSettingsService(queries, programLogger, notifier, watcherService)
-	myApp := app.NewApp(scannerService, settingsService, watcherService)
 
+	settingsService := settings.NewSettingsService(queries, programLogger, notifier, watcherService, sharedConfig)
+
+	// E. App dostaje loggera z maina
+	myApp := app.NewApp(programLogger, scannerService, settingsService, watcherService)
+
+	// 4. Uruchomienie Wails
 	err = wails.Run(&options.App{
 		Title:            "Eclat",
 		WindowStartState: options.Maximised,

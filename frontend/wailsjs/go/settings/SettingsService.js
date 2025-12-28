@@ -10,6 +10,10 @@ export function DeleteFolder(arg1) {
   return window['go']['settings']['SettingsService']['DeleteFolder'](arg1);
 }
 
+export function GetConfig() {
+  return window['go']['settings']['SettingsService']['GetConfig']();
+}
+
 export function GetFolders() {
   return window['go']['settings']['SettingsService']['GetFolders']();
 }
@@ -24,6 +28,10 @@ export function OpenFolderPicker() {
 
 export function OpenInExplorer(arg1) {
   return window['go']['settings']['SettingsService']['OpenInExplorer'](arg1);
+}
+
+export function SetAllowedExtensions(arg1) {
+  return window['go']['settings']['SettingsService']['SetAllowedExtensions'](arg1);
 }
 
 export function Startup(arg1) {

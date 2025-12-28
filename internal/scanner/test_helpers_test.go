@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"database/sql"
+	"eclat/internal/config"
 	"eclat/internal/database"
 	"eclat/internal/feedback"
 	"fmt"
@@ -112,8 +113,9 @@ func setupLogicTest(t *testing.T) (*sql.DB, database.Querier, *Scanner, string) 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockThumbGen := &MockThumbnailGenerator{}
 	notifier := &MockNotifier{}
-	scanner := NewScanner(conn, queries, mockThumbGen, logger, notifier)
-	scanner.AddExtensions([]string{".txt", ".png"}) // Używamy prostych rozszerzeń
+	cfg := config.NewScannerConfig()
+	scanner := NewScanner(conn, queries, mockThumbGen, logger, notifier, cfg)
+	cfg.SetAllowedExtensions([]string{".txt", ".png"}) // Używamy prostych rozszerzeń
 	return conn, queries, scanner, root
 }
 

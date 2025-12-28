@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"database/sql"
+	"eclat/internal/config"
 	"eclat/internal/database"
 	"io"
 	"log/slog"
@@ -36,7 +37,9 @@ func (nw *NoOpWatcher) Unwatch(path string) {}
 func TestSettings_ValidatePath(t *testing.T) {
 	mockNotifier := &MockNotifier{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{})
+	// Tutaj nil dla DB jest OK, bo ValidatePath używa tylko os.Stat
+	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
+
 	t.Run("Should return true for existing directory", func(t *testing.T) {
 		tempDir := t.TempDir()
 		isValid := svc.ValidatePath(tempDir)
@@ -58,16 +61,65 @@ func TestSettings_ValidatePath(t *testing.T) {
 	})
 }
 
-func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
-	// 1. Setup - używamy _ dla nieużywanego conn, żeby uniknąć błędu kompilacji
+func TestSettings_ConfigUpdates(t *testing.T) {
+	// POPRAWKA 1: Musimy mieć bazę danych, bo SetAllowedExtensions zapisuje do niej!
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{})
+
+	cfg := config.NewScannerConfig()
+	// POPRAWKA 2: Przekazujemy queries zamiast nil
+	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, cfg)
+
+	// POPRAWKA 3: Inicjalizujemy kontekst, bo baza go wymaga
 	ctx := context.Background()
 	svc.Startup(ctx)
 
-	// Przygotowanie testowej ścieżki
+	t.Run("Should update extensions in shared config", func(t *testing.T) {
+		// Początkowy stan
+		initial := svc.GetConfig()
+		assert.Contains(t, initial.AllowedExtensions, ".jpg")
+
+		// Zmiana
+		newExts := []string{".blend", ".fbx", "OBJ"} // OBJ bez kropki - powinno naprawić
+		err := svc.SetAllowedExtensions(newExts)
+		assert.NoError(t, err)
+
+		// Sprawdzamy przez serwis
+		updated := svc.GetConfig()
+		assert.Len(t, updated.AllowedExtensions, 3)
+		assert.Contains(t, updated.AllowedExtensions, ".obj")
+
+		// KLUCZOWE: Sprawdzamy czy "shared config" został zaktualizowany
+		assert.True(t, cfg.IsExtensionAllowed(".blend"))
+		assert.False(t, cfg.IsExtensionAllowed(".jpg"), "Stare rozszerzenie powinno zniknąć")
+
+		// Sprawdźmy czy zapisało się w bazie (Persistence Check)
+		storedJSON, err := queries.GetSystemSetting(ctx, "allowed_extensions")
+		assert.NoError(t, err)
+		assert.Contains(t, storedJSON, ".blend", "Ustawienia powinny trafić do bazy")
+	})
+
+	t.Run("Should filter dangerous extensions", func(t *testing.T) {
+		badExts := []string{".exe", ".bat", ".png"}
+		err := svc.SetAllowedExtensions(badExts)
+		assert.NoError(t, err)
+
+		cfgDto := svc.GetConfig()
+		assert.Contains(t, cfgDto.AllowedExtensions, ".png")
+		assert.NotContains(t, cfgDto.AllowedExtensions, ".exe")
+		assert.NotContains(t, cfgDto.AllowedExtensions, ".bat")
+	})
+}
+
+func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
+	_, queries := setupTestDB(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	mockNotifier := &MockNotifier{}
+	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
+	ctx := context.Background()
+	svc.Startup(ctx)
+
 	folderPath := t.TempDir()
 
 	t.Run("Add and Get Folder", func(t *testing.T) {
@@ -121,7 +173,8 @@ func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
 func TestSettings_FolderPicker_Mock(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{})
+	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
+	svc.Startup(context.Background())
 
 	t.Run("Successful Selection", func(t *testing.T) {
 		mockPath := "/fake/path/to/library"
@@ -137,18 +190,13 @@ func TestSettings_FindBestParent_Logic(t *testing.T) {
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{})
+	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 	ctx := context.Background()
 	svc.Startup(ctx)
 
-	// Tworzymy strukturę folderów:
-	// /root
-	// /root/sub
 	rootPath := "/tmp/eclat_root"
 	subPath := filepath.Join(rootPath, "sub")
 
-	// Musimy je wstawić do bazy (bez ValidatePath, bo to tylko test logiki ścieżek)
-	// Używamy bezpośrednio queries, żeby obejść ValidatePath w AddFolder
 	queries.CreateScanFolder(ctx, rootPath)
 	subFolder, _ := queries.CreateScanFolder(ctx, subPath)
 
@@ -158,9 +206,10 @@ func TestSettings_FindBestParent_Logic(t *testing.T) {
 		assert.Equal(t, rootPath, parent.Path)
 	})
 }
+
 func TestSettings_MapToDTO_Scenarios(t *testing.T) {
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(nil, nil, mockNotifier, &NoOpWatcher{})
+	svc := NewSettingsService(nil, nil, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 
 	t.Run("Map with LastScanned NULL", func(t *testing.T) {
 		f := database.ScanFolder{LastScanned: sql.NullTime{Valid: false}, DateAdded: time.Now()}
@@ -176,6 +225,7 @@ func TestSettings_MapToDTO_Scenarios(t *testing.T) {
 		assert.Equal(t, now.Format(time.RFC3339), *dto.LastScanned)
 	})
 }
+
 func TestSettings_UpdateFolderStatus_Logic(t *testing.T) {
 	_, queries, _, root := setupLogicTest(t)
 	ctx := context.Background()
@@ -184,7 +234,7 @@ func TestSettings_UpdateFolderStatus_Logic(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{})
+	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 	svc.Startup(ctx)
 	path := filepath.Join(root, "test.png")
 	createDummyFile(t, path)

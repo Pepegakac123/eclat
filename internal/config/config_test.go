@@ -1,6 +1,7 @@
 package config
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,25 +41,48 @@ func TestNewScannerConfig_Defaults(t *testing.T) {
 	cfg := NewScannerConfig()
 
 	assert.NotNil(t, cfg)
-	assert.Greater(t, len(cfg.AllowedExtensions), 0, "Lista rozszerzeń nie powinna być pusta")
-	assert.Equal(t, int64(268435456), cfg.MaxAllowHashFileSize, "Domyślny limit rozmiaru pliku nieprawidłowy")
+
+	allowed := cfg.GetAllowedExtensions()
+	assert.Greater(t, len(allowed), 0, "Lista rozszerzeń nie powinna być pusta")
+
+	assert.Equal(t, int64(268435456), cfg.GetMaxHashFileSize(), "Domyślny limit rozmiaru pliku nieprawidłowy")
 }
 
 func TestNewScannerConfig_SliceIsolation(t *testing.T) {
-	// Ten test chroni przed usunięciem 'copy()' z konstruktora.
-	// W Go slice to referencja. Bez copy(), modyfikacja cfg zmieniłaby DefaultAllowedExtensions.
-
 	cfg := NewScannerConfig()
 
-	// Zapamiętujemy oryginał
 	originalFirst := DefaultAllowedExtensions[0]
+	currentExts := cfg.GetAllowedExtensions()
 
-	// Modyfikujemy instancję
-	cfg.AllowedExtensions[0] = ".HACKED"
-
-	// Sprawdzamy czy globalna zmienna pozostała nienaruszona
+	currentExts[0] = ".HACKED"
+	cfg.SetAllowedExtensions([]string{".NEW", ".STUFF"})
 	assert.Equal(t, originalFirst, DefaultAllowedExtensions[0],
-		"CRITICAL: Modyfikacja instancji configu nadpisała globalną zmienną! Brakuje copy() w konstruktorze?")
+		"CRITICAL: Globalna zmienna została naruszona!")
 
-	assert.NotEqual(t, cfg.AllowedExtensions[0], DefaultAllowedExtensions[0])
+	newConfigExts := cfg.GetAllowedExtensions()
+	assert.Equal(t, ".NEW", newConfigExts[0])
+	assert.NotContains(t, newConfigExts, ".HACKED", "Config nie powinien przyjąć modyfikacji lokalnej kopii")
+}
+
+func TestScannerConfig_Concurrency(t *testing.T) {
+	cfg := NewScannerConfig()
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = cfg.IsExtensionAllowed("test.jpg")
+			_ = cfg.GetAllowedExtensions()
+		}()
+	}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cfg.SetAllowedExtensions([]string{".png", ".jpg"})
+		}()
+	}
+
+	wg.Wait()
+	assert.True(t, cfg.IsExtensionAllowed("test.jpg"))
 }
