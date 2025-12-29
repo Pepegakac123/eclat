@@ -23,16 +23,21 @@ import (
 // Scanner is responsible for scanning the file system for assets,
 // generating thumbnails, and synchronizing the state with the database.
 type Scanner struct {
-	mu           sync.RWMutex
-	db           database.Querier
-	conn         *sql.DB
-	logger       *slog.Logger
-	cancelFunc   context.CancelFunc
-	config       *config.ScannerConfig
-	isScanning   atomic.Bool
-	thumbGen     ThumbnailGenerator
-	ctx          context.Context
-	notifier     feedback.Notifier
+	mu         sync.RWMutex
+	db         database.Querier
+	conn       *sql.DB
+	logger     *slog.Logger
+	cancelFunc context.CancelFunc
+	config     *config.ScannerConfig
+	isScanning atomic.Bool
+	thumbGen   ThumbnailGenerator
+	ctx        context.Context
+	notifier   feedback.Notifier
+
+	// sessionCache and sessionMu are used for intra-scan duplicate detection.
+	// Since database writes are batched, a worker might process a duplicate file
+	// before its "original" is committed. This cache allows workers to share
+	// newly generated GroupIDs for identical hashes instantly.
 	sessionMu    sync.Mutex
 	sessionCache map[string]string
 }
@@ -112,11 +117,13 @@ func (s *Scanner) StartScan() error {
 	scanCtx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
 
-	// Initialize session cache
+	// Initialize session cache for this specific scan run.
 	s.sessionMu.Lock()
 	s.sessionCache = make(map[string]string)
 	s.sessionMu.Unlock()
 
+	// Channels for the pipeline:
+	// WalkDir -> jobs -> Workers -> results -> Collector
 	jobs := make(chan ScanJob, 100)
 	results := make(chan ScanResult, 100)
 
@@ -133,6 +140,7 @@ func (s *Scanner) StartScan() error {
 		var foundOnDisk map[string]bool
 		collectorDone := make(chan map[string]bool)
 
+		// 1. Snapshot State: Load existing assets to detect deletions later.
 		existingAssets, err := s.loadExistingAssets(scanCtx)
 		if err != nil {
 			s.logger.Error("Failed to load existing assets. Aborting.", "error", err)
@@ -144,6 +152,8 @@ func (s *Scanner) StartScan() error {
 			s.logger.Error("Failed to list folders", slog.String("error", err.Error()))
 			return
 		}
+
+		// 2. Preparation: Count files to show accurate progress bar.
 		s.logger.Info("Calculating total files...")
 		for _, f := range folders {
 			if scanCtx.Err() != nil {
@@ -155,15 +165,22 @@ func (s *Scanner) StartScan() error {
 		s.logger.Info("Total files to scan calculated", "count", totalToProcess)
 		s.notifier.SendScannerStatus(s.ctx, feedback.Scanning)
 		s.notifier.SendScanProgress(s.ctx, 0, totalToProcess, "Initializing...")
+
+		// 3. Start Collector: Runs in background to batch DB writes.
 		go func() {
 			defer close(collectorDone)
+			// Collector returns the set of all file paths actually found on disk.
 			foundOnDisk = s.Collector(scanCtx, totalToProcess, results)
 			collectorDone <- foundOnDisk
 		}()
+
+		// 4. Start Workers: Parallel processing of files.
 		for i := 0; i < numWorkers; i++ {
 			workersWg.Add(1)
 			go s.Worker(scanCtx, &workersWg, jobs, results)
 		}
+
+		// 5. Feed Workers: Walk directories and send jobs.
 		for _, f := range folders {
 			if scanCtx.Err() != nil {
 				break
@@ -173,15 +190,23 @@ func (s *Scanner) StartScan() error {
 				s.logger.Error("Failed to scan directory", slog.String("error", err.Error()))
 			}
 		}
+
+		// 6. Teardown: Close channels and wait for completion.
 		close(jobs)
-		workersWg.Wait()
-		close(results)
+		workersWg.Wait() // Wait for workers to finish processing
+		close(results)   // Close results to let Collector finish
 		foundOnDisk = <-collectorDone
+
 		s.logger.Info("Scanner finished", "total", totalToProcess)
 		s.notifier.SendScannerStatus(s.ctx, feedback.Idle)
+
+		// 7. Mark-and-Sweep Cleanup:
+		// Any asset in DB (existingAssets) that was NOT found in the current scan (foundOnDisk)
+		// must be marked as deleted.
 		s.logger.Info("Scan finished. Starting Cleanup phase...",
 			"db_cache_size", len(existingAssets),
 			"found_on_disk", len(foundOnDisk))
+
 		for path, cached := range existingAssets {
 			if !foundOnDisk[cached.FilePath] {
 				if !cached.IsDeleted {
@@ -215,6 +240,8 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 			continue
 		}
 
+		// Calculate hash to detect duplicates or content changes.
+		// Large files might be skipped (max hash size config).
 		hash, err := CalculateFileHash(job.Path, s.config.GetMaxHashFileSize())
 		if err != nil {
 			s.logger.Warn("Hashing skipped (likely too large)", "path", job.Path, "reason", err)
@@ -223,7 +250,11 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 		var exist database.Asset
 		var lookupErr error
 
+		// Lookup Logic:
+		// 1. Check if we know this specific path.
 		exist, lookupErr = s.db.GetAssetByPath(ctx, job.Path)
+
+		// 2. If path unknown but we have a hash, check if we know the content (Renames/Moves).
 		if lookupErr == sql.ErrNoRows && hash != "" {
 			exist, lookupErr = s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
 		}
@@ -238,8 +269,10 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 		fileType := DetermineFileType(ext)
 
 		if exist.ID > 0 {
+			// We found a matching record (either by path or hash).
 			s.processExistingAsset(ctx, &result, exist, job, fileType, hash)
 		} else {
+			// Totally new file (path unknown, hash unknown).
 			s.processNewAsset(ctx, &result, job, fileType, hash)
 		}
 
@@ -260,6 +293,7 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 	foundMatch := false
 
 	// === PLAN A: EXACT MATCH (HASH) - DB LOOKUP ===
+	// Check if this file is a duplicate of something already in the DB.
 	if hash != "" {
 		existingDuplicate, err := s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
 		if err == nil {
@@ -272,6 +306,9 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 	}
 
 	// === PLAN A.5: EXACT MATCH (HASH) - SESSION CACHE LOOKUP ===
+	// Check if another worker found this same file content in this current scan session.
+	// This handles the case where we have 2 copies of a new file; one worker processes Copy A,
+	// assigns a new GroupID, and caches it. The second worker processing Copy B hits this cache.
 	if !foundMatch && hash != "" {
 		s.sessionMu.Lock()
 		if cachedGroupID, ok := s.sessionCache[hash]; ok {
@@ -285,6 +322,8 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 	}
 
 	// === PLAN B: HEURISTIC MATCH (NAME) ===
+	// If hashes don't match (or file too big to hash), try to guess relationships based on filenames.
+	// Useful for grouping texture sets (e.g., "Wood_Color.png", "Wood_Normal.png").
 	if !foundMatch {
 		matchedGroupID, found := s.TryHeuristicMatch(ctx, job.FolderId, job.Entry.Name())
 		if found {
@@ -296,7 +335,7 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 		}
 	}
 
-	// If no match found, generate a new Group ID
+	// If no match found, this is a completely unique new asset.
 	if !foundMatch {
 		targetGroupID = uuid.New().String()
 		if hash != "" {
@@ -318,6 +357,8 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 // processExistingAsset handles the logic for a file that is already present in the database.
 // It checks for modifications, content changes, moves, or renames.
 func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, exist database.Asset, job ScanJob, fileType, hash string) {
+	// Case 1: The path matches exactly.
+	// This is an update to an existing file (or a resurrection if it was deleted).
 	if exist.FilePath == job.Path {
 		var isResurrected bool
 		if exist.IsDeleted {
@@ -334,6 +375,7 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 			dbTime := exist.LastModified.Unix()
 			diskTime := info.ModTime().Unix()
 
+			// If timestamp changed or we are resurrecting, we regenerate metadata.
 			if dbTime != diskTime || isResurrected {
 				s.logger.Info("📝 File Content Changed or Resurrected: Refreshing metadata", "path", job.Path)
 
@@ -356,6 +398,7 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 					result.ModifiedAsset = modifiedAsset
 				}
 			} else if isResurrected {
+				// Resurrected but content seems same (rare but possible if logic changes), just un-delete.
 				result.ModifiedAsset = &database.UpdateAssetFromScanParams{
 					ID:          exist.ID,
 					IsDeleted:   sql.NullBool{Bool: false, Valid: true},
@@ -367,10 +410,14 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 		return
 	}
 
+	// Case 2: The path is DIFFERENT, but we found the record via Hash.
+	// This means it's either a MOVE/RENAME or a COPY (Duplicate).
 	_, statErr := os.Stat(exist.FilePath)
 	oldFileMissing := os.IsNotExist(statErr)
 
 	if oldFileMissing {
+		// The old file is gone, so this must be a Rename/Move.
+		// We update the existing record with the new path.
 		s.logger.Info("🚚 Move/Rename Detected", "old_path", exist.FilePath, "new_path", job.Path)
 		result.ModifiedAsset = &database.UpdateAssetFromScanParams{
 			ID:           exist.ID,
@@ -379,8 +426,10 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 			IsDeleted:    sql.NullBool{Bool: false, Valid: true},
 			LastScanned:  sql.NullTime{Time: time.Now(), Valid: true},
 		}
-		result.ExistingPath = exist.FilePath
+		result.ExistingPath = exist.FilePath // Mark old path as processed/handled
 	} else {
+		// The old file still exists. This is a Copy (Duplicate).
+		// We treat it as a new asset, but processNewAsset will handle linking it via GroupID.
 		s.logger.Info("👯 Duplicate Detected (Copy)", "original_id", exist.ID, "new_copy_path", job.Path)
 		s.processNewAsset(ctx, result, job, fileType, hash)
 	}
@@ -396,6 +445,7 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 
 	var totalProcessed int
 
+	// Helper to flush current buffer to DB
 	flush := func() {
 		if len(buff) > 0 {
 			err := s.ApplyBatch(ctx, buff)
@@ -415,6 +465,7 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 		if result.NewAsset != nil || result.ModifiedAsset != nil {
 			buff = append(buff, result)
 		}
+		// Track which paths we've seen to enable cleanup of missing files later.
 		if result.ExistingPath != "" {
 			processed[result.ExistingPath] = true
 		} else {
@@ -425,7 +476,7 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 		}
 		s.updateAndEmitTotal(&totalProcessed, totalToProcess, emitAfter)
 	}
-	flush()
+	flush() // Flush remaining items
 	return processed
 }
 

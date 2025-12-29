@@ -15,22 +15,26 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// debounceDuration defines the time window to group multiple file events into a single action.
 const debounceDuration = 500 * time.Millisecond
 
+// Service implements a file system watcher that monitors directories for changes.
+// It reports file creations, modifications, and deletions to the scanner service.
 type Service struct {
 	watcher      *fsnotify.Watcher
 	logger       *slog.Logger
 	ctx          context.Context
 	db           database.Querier
-	config       *config.ScannerConfig // Wskaźnik na współdzielony config
-	Events       chan string
-	watchedPaths map[string]bool
-	timers       map[string]*time.Timer
+	config       *config.ScannerConfig  // Shared configuration for allowed extensions
+	Events       chan string            // Channel to emit file paths that need scanning
+	watchedPaths map[string]bool        // Set of currently watched directories
+	timers       map[string]*time.Timer // Debounce timers for active file events
 	mu           sync.Mutex
 	shutdownOnce sync.Once
 }
 
-// NewService - Zaktualizowana sygnatura: przyjmuje config!
+// NewService creates a new Watcher Service instance.
+// It requires a database connection to load initial folders and a configuration for extension filtering.
 func NewService(db database.Querier, logger *slog.Logger, cfg *config.ScannerConfig) (*Service, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -41,13 +45,15 @@ func NewService(db database.Querier, logger *slog.Logger, cfg *config.ScannerCon
 		watcher:      w,
 		logger:       logger,
 		db:           db,
-		config:       cfg, // Używamy wstrzykniętego configu
+		config:       cfg,
 		Events:       make(chan string, 1000),
 		timers:       make(map[string]*time.Timer),
 		watchedPaths: make(map[string]bool),
 	}, nil
 }
 
+// Startup initializes the watcher service.
+// It loads configured scan folders from the database and starts the event processing loop.
 func (s *Service) Startup(ctx context.Context) {
 	s.ctx = ctx
 	go func() {
@@ -61,6 +67,7 @@ func (s *Service) Startup(ctx context.Context) {
 	go s.startLoop()
 }
 
+// Shutdown gracefully stops the watcher, closes the fsnotify instance, and cleans up resources.
 func (s *Service) Shutdown() {
 	s.shutdownOnce.Do(func() {
 		s.logger.Info("🛑 Shutting down Watcher service...")
@@ -77,6 +84,7 @@ func (s *Service) Shutdown() {
 	})
 }
 
+// initFolders loads all active scan folders from the database and adds them to the watcher.
 func (s *Service) initFolders() error {
 	folders, err := s.db.ListScanFolders(s.ctx)
 	if err != nil {
@@ -90,6 +98,7 @@ func (s *Service) initFolders() error {
 	return nil
 }
 
+// Watch adds a new directory (and its subdirectories) to the watcher.
 func (s *Service) Watch(path string) {
 	s.logger.Info("Adding watcher recursively", "root", path)
 	if err := s.walkAndWatch(path); err != nil {
@@ -97,11 +106,13 @@ func (s *Service) Watch(path string) {
 	}
 }
 
+// Unwatch removes a directory (and its subdirectories) from the watcher.
 func (s *Service) Unwatch(path string) {
 	s.logger.Info("Removing watchers recursively", "root", path)
 	s.unwatchRecursive(path)
 }
 
+// walkAndWatch recursively walks a directory tree and adds each directory to the watcher.
 func (s *Service) walkAndWatch(root string) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -120,6 +131,7 @@ func (s *Service) walkAndWatch(root string) error {
 	})
 }
 
+// addWatch adds a single directory to the fsnotify watcher.
 func (s *Service) addWatch(path string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -135,6 +147,7 @@ func (s *Service) addWatch(path string) error {
 	return nil
 }
 
+// unwatchRecursive removes a directory and all its nested watched paths from the watcher.
 func (s *Service) unwatchRecursive(root string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -151,6 +164,8 @@ func (s *Service) unwatchRecursive(root string) {
 	}
 }
 
+// startLoop processes events from the fsnotify channel.
+// It handles new directory detection, extension filtering, and debouncing of file events.
 func (s *Service) startLoop() {
 	s.logger.Info("👂 Watcher loop started")
 	for {
@@ -196,10 +211,12 @@ func (s *Service) startLoop() {
 }
 
 func (s *Service) isExtensionAllowed(path string) bool {
-	// Delegujemy do Thread-Safe metody z configu
+	// Delegates to the thread-safe method from config
 	return s.config.IsExtensionAllowed(path)
 }
 
+// triggerDebounce starts or resets a timer for a specific file path.
+// When the timer expires, the file is sent for scanning. This prevents multiple scans for a single file operation.
 func (s *Service) triggerDebounce(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -216,7 +233,7 @@ func (s *Service) triggerDebounce(path string) {
 
 	s.timers[path] = time.AfterFunc(debounceDuration, func() {
 		s.mu.Lock()
-		// Sprawdźmy czy timer wciąż tam jest (czy nie został wyczyszczony przez Shutdown)
+		// Check if timer is still valid (wasn't cleared by Shutdown)
 		if _, ok := s.timers[path]; !ok {
 			s.mu.Unlock()
 			return
@@ -240,6 +257,7 @@ func (s *Service) triggerDebounce(path string) {
 	})
 }
 
+// sendEvent puts a file path into the events channel for the scanner to consume.
 func (s *Service) sendEvent(path string) {
 	defer func() {
 		if r := recover(); r != nil {

@@ -17,6 +17,7 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 )
 
+// FileType represents the broad category of an asset.
 type FileType string
 
 const (
@@ -26,6 +27,7 @@ const (
 	FileTypeOther   FileType = "other"
 )
 
+// ImageMetadata holds technical details extracted from an image file.
 type ImageMetadata struct {
 	Width           int
 	Height          int
@@ -34,6 +36,7 @@ type ImageMetadata struct {
 	DominantColor   string
 }
 
+// DetermineFileType maps a file extension to a high-level FileType category.
 func DetermineFileType(extension string) string {
 	ext := strings.ToLower(extension)
 
@@ -71,6 +74,8 @@ func DetermineFileType(extension string) string {
 	}
 }
 
+// CalculateFileHash computes the SHA256 hash of a file.
+// If maxSizeBytes is > 0, files larger than this limit are skipped (returns empty hash).
 func CalculateFileHash(filePath string, maxSizeBytes int64) (string, error) {
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
@@ -94,6 +99,8 @@ func CalculateFileHash(filePath string, maxSizeBytes int64) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
+// CalculateDominantColor extracts the most prominent color from an image using K-Means clustering.
+// Returns the color in HEX format.
 func CalculateDominantColor(img image.Image) (string, error) {
 	if img == nil {
 		return "", errors.New("image is nil")
@@ -101,7 +108,7 @@ func CalculateDominantColor(img image.Image) (string, error) {
 
 	resizeSize := uint(prominentcolor.DefaultSize)
 	bgmasks := prominentcolor.GetDefaultMasks()
-	k := 1 // Chcemy jeden główny kolor
+	k := 1 // We want one main color
 	centroids, err := prominentcolor.KmeansWithAll(
 		k,
 		img,
@@ -124,6 +131,8 @@ func CalculateDominantColor(img image.Image) (string, error) {
 	return hexColor, nil
 }
 
+// FindClosestPaletteColor finds the nearest color in a predefined palette to the given HEX color.
+// It uses CIELAB color space for perceptual distance calculation.
 func FindClosestPaletteColor(hexInput string, palette []config.PaletteColor) (string, error) {
 	inputColor, err := colorful.Hex(hexInput)
 	if err != nil {
@@ -151,33 +160,33 @@ func FindClosestPaletteColor(hexInput string, palette []config.PaletteColor) (st
 	return closestHex, nil
 }
 
-// GetBitDepth analizuje model kolorów obrazu i zwraca głębię bitową na kanał.
-// Zwraca 8 (standard), 16 (High Quality) lub inne wartości.
+// GetBitDepth estimates the bit depth per channel of an image based on its Go ColorModel.
+// Returns 8 for standard images, 16 for HDR/RAW formats, or 8 as a fallback.
 func GetBitDepth(img image.Image) int {
 	if img == nil {
 		return 0
 	}
 
 	switch img.ColorModel() {
-	// Modele 16-bitowe (High Dynamic Range / RAW exports)
+	// 16-bit models (High Dynamic Range / RAW exports)
 	case color.RGBA64Model, color.NRGBA64Model, color.Alpha16Model, color.Gray16Model:
 		return 16
 
-	// Modele CMYK (rzadkie w web, ale możliwe w druku) - zazwyczaj 8 bit na kanał
+	// CMYK models - usually 8 bits per channel
 	case color.CMYKModel:
 		return 8
 
-	// Standardowe 8-bitowe
+	// Standard 8-bit models
 	case color.RGBAModel, color.NRGBAModel, color.AlphaModel, color.GrayModel:
 		return 8
 
-	// Palety (GIF, PNG-8) - technicznie to indeksy (często < 8 bit),
+	// Paletted images (GIF, PNG-8)
 	default:
-		// Sprawdźmy czy to paleta
+		// Check if it's a palette
 		if _, ok := img.ColorModel().(color.Palette); ok {
 			return 8
 		}
-		// Fallback dla nietypowych formatów
+		// Fallback for other formats
 		return 8
 	}
 }

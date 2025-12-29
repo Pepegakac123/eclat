@@ -10,13 +10,14 @@ import (
 	"strings"
 )
 
-// ScannerConfigSnapshot to struktura publiczna (DTO) dla Frontendu.
+// ScannerConfigSnapshot is a Data Transfer Object (DTO) representing the current configuration state.
+// It is used to pass configuration data to the frontend.
 type ScannerConfigSnapshot struct {
 	AllowedExtensions    []string `json:"allowedExtensions"`
 	MaxAllowHashFileSize int64    `json:"maxAllowHashFileSize"`
 }
 
-// GetConfig returns a thread-safe snapshot of configuration for the UI
+// GetConfig returns a thread-safe snapshot of the current scanner configuration.
 func (s *Scanner) GetConfig() ScannerConfigSnapshot {
 	return ScannerConfigSnapshot{
 		AllowedExtensions:    s.config.GetAllowedExtensions(),
@@ -24,20 +25,21 @@ func (s *Scanner) GetConfig() ScannerConfigSnapshot {
 	}
 }
 
-// GetPredefinedPalette returns color palette
+// GetPredefinedPalette returns the list of predefined colors used for palette matching.
 func (s *Scanner) GetPredefinedPalette() []config.PaletteColor {
 	return config.PredefinedPalette
 }
 
-// IsExtensionAllowed checks if file should be scanned
+// IsExtensionAllowed checks if the given file extension is currently allowed by the configuration.
 func (s *Scanner) IsExtensionAllowed(ext string) bool {
-	// Delegujemy do configa - on ma RLocka w środku.
+	// Delegates to the thread-safe config method.
 	return s.config.IsExtensionAllowed(ext)
 }
 
-// AddExtensions safely adds new extensions
+// AddExtensions safely adds a list of new file extensions to the allowed list.
+// It performs validation to ensure no dangerous extensions are added and persists the changes to the database.
 func (s *Scanner) AddExtensions(exts []string) error {
-	// 1. Walidacja (statyczna, nie wymaga locka)
+	// 1. Validation (static check, no lock needed)
 	var invalidExts []string
 	if len(exts) <= 0 {
 		return nil
@@ -53,11 +55,11 @@ func (s *Scanner) AddExtensions(exts []string) error {
 		return fmt.Errorf("invalid or dangerous extensions: %s", strings.Join(invalidExts, ", "))
 	}
 
-	// 2. Pobieramy obecny stan (Thread-Safe Copy)
+	// 2. Get current state (Thread-Safe Copy)
 	currentExts := s.config.GetAllowedExtensions()
 	modified := false
 
-	// 3. Modyfikujemy lokalną kopię
+	// 3. Modify local copy
 	for _, ext := range exts {
 		normalized := strings.ToLower(ext)
 		if !strings.HasPrefix(normalized, ".") {
@@ -72,7 +74,7 @@ func (s *Scanner) AddExtensions(exts []string) error {
 
 	if modified {
 		s.config.SetAllowedExtensions(currentExts)
-		// PERSISTENCE: Zapisujemy do bazy
+		// PERSISTENCE: Save to DB
 		if err := s.persistExtensions(currentExts); err != nil {
 			s.logger.Error("Failed to persist extensions", "error", err)
 			return err
@@ -82,7 +84,8 @@ func (s *Scanner) AddExtensions(exts []string) error {
 	return nil
 }
 
-// RemoveExtension removes extension from allowed list
+// RemoveExtension removes a specific extension from the allowed list.
+// If the extension was present, the updated list is persisted to the database.
 func (s *Scanner) RemoveExtension(ext string) {
 	normalized := strings.ToLower(ext)
 	if !strings.HasPrefix(normalized, ".") {
@@ -95,19 +98,19 @@ func (s *Scanner) RemoveExtension(ext string) {
 		return e == normalized
 	})
 
-	// Jeśli długość się zmieniła, aktualizujemy
+	// If length changed, update configuration
 	if len(newExts) != len(currentExts) {
 		s.config.SetAllowedExtensions(newExts)
-		// PERSISTENCE: Zapisujemy do bazy (ignorujemy błąd w sygnaturze, ale logujemy)
+		// PERSISTENCE: Save to DB (ignoring error in signature, but logging it)
 		if err := s.persistExtensions(newExts); err != nil {
 			s.logger.Error("Failed to persist extensions removal", "error", err)
 		}
 	}
 }
 
-// persistExtensions to helper do zapisywania stanu w bazie
+// persistExtensions helper function to save the list of allowed extensions to the database.
 func (s *Scanner) persistExtensions(exts []string) error {
-	// Safety check dla testów, gdzie db może być nil
+	// Safety check for tests where db might be nil
 	if s.db == nil {
 		return nil
 	}
@@ -117,7 +120,7 @@ func (s *Scanner) persistExtensions(exts []string) error {
 		return err
 	}
 
-	// Używamy kontekstu aplikacji lub tła, jeśli jeszcze nie wystartowała
+	// Use application context or background if not started
 	ctx := s.ctx
 	if ctx == nil {
 		ctx = context.Background()

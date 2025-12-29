@@ -1,9 +1,9 @@
-package scanner // Zmiana nazwy pakietu
+package scanner
 
 import (
 	"context"
 	"eclat/internal/config"
-	"fmt" // Import
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -18,21 +18,29 @@ import (
 	"github.com/google/uuid"
 )
 
+// ThumbnailGenerator defines the interface for generating or retrieving thumbnails for assets.
 type ThumbnailGenerator interface {
 	Generate(ctx context.Context, sourcePath string) (ThumbnailResult, error)
 }
 
+// DiskThumbnailGenerator implements ThumbnailGenerator by creating thumbnails on disk
+// or returning static placeholders for unsupported file types.
 type DiskThumbnailGenerator struct {
 	cacheDir       string
 	logger         *slog.Logger
 	placeholderMap map[string]string
 }
+
+// ThumbnailResult contains the path to the generated thumbnail (or placeholder)
+// and extracted image metadata.
 type ThumbnailResult struct {
 	WebPath       string
 	Metadata      ImageMetadata
 	IsPlaceholder bool
 }
 
+// NewDiskThumbnailGenerator creates a new generator that stores thumbnails in the specified cache directory.
+// It initializes a map of default placeholders for various 3D and texture formats.
 func NewDiskThumbnailGenerator(cacheDir string, logger *slog.Logger) *DiskThumbnailGenerator {
 	return &DiskThumbnailGenerator{
 		cacheDir: cacheDir,
@@ -81,6 +89,9 @@ func isSupportedImageExt(ext string) bool {
 	return false
 }
 
+// Generate creates a thumbnail for the file at srcPath.
+// If the file is a supported image, it generates a WebP thumbnail and extracts metadata.
+// For other files, it returns a pre-configured placeholder.
 func (g *DiskThumbnailGenerator) Generate(ctx context.Context, srcPath string) (ThumbnailResult, error) {
 	ext := strings.ToLower(filepath.Ext(srcPath))
 	if isSupportedImageExt(ext) {
@@ -88,6 +99,7 @@ func (g *DiskThumbnailGenerator) Generate(ctx context.Context, srcPath string) (
 	}
 	return g.getPlaceholderResult(ext), nil
 }
+
 func (g *DiskThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailResult, error) {
 	img, err := imaging.Open(srcPath)
 	if err != nil {
@@ -176,6 +188,7 @@ func (g *DiskThumbnailGenerator) getPlaceholderResult(ext string) ThumbnailResul
 		IsPlaceholder: true,
 	}
 }
+
 func (g *DiskThumbnailGenerator) getPlaceholderPath(ext string) string {
 	const defaultPlaceholder = "generic_placeholder.webp"
 	const placeholderPrefix = "/placeholders/"

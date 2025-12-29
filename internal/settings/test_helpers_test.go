@@ -20,9 +20,9 @@ import (
 	_ "modernc.org/sqlite" // Driver
 )
 
-// MockNotifier - struktura pomocnicza tylko do testów
+// MockNotifier captures notifications for testing assertions.
 type MockNotifier struct {
-	LastMsg   feedback.ToastField // Zapamiętujemy ostatnią wiadomość
+	LastMsg   feedback.ToastField // Stores the last sent toast message
 	CallCount int
 	LastEvent string
 }
@@ -46,9 +46,9 @@ func (m *MockNotifier) EmitAssetsChanged(ctx context.Context) {
 	m.CallCount++
 }
 
-// setupTestDB - Wersja PRO z Goose
+// setupTestDB initializes an in-memory SQLite database and applies migrations using Goose.
 func setupTestDB(t *testing.T) (*sql.DB, database.Querier) {
-	// 1. Connection String (z fixem na czas)
+	// 1. Connection String (with cache=shared for in-memory DBs)
 	dsn := "file::memory:?cache=shared&_time_format=sqlite"
 
 	db, err := sql.Open("sqlite", dsn)
@@ -56,17 +56,17 @@ func setupTestDB(t *testing.T) (*sql.DB, database.Querier) {
 		t.Fatalf("Failed to open db: %v", err)
 	}
 
-	// 2. GOOSE - Migracje
-	// Ustawiamy dialekt na sqlite3 (Goose używa tego stringa nawet dla modernc)
+	// 2. GOOSE - Migrations
+	// Force sqlite3 dialect (Goose uses this string even for modernc)
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		t.Fatalf("Failed to set goose dialect: %v", err)
 	}
 
-	// Wyłączamy logi Goose'a w testach, żeby nie śmiecił w terminalu
+	// Silence Goose logs during tests
 	goose.SetLogger(goose.NopLogger())
 
-	// Odpalamy migracje z plików na dysku using relative path
-	// Z katalogu internal/services musimy wyjść dwa razy w górę do sql/schema
+	// Apply migrations from the disk using a relative path.
+	// We need to navigate up from internal/settings to sql/schema.
 	if err := goose.Up(db, "../../sql/schema"); err != nil {
 		t.Fatalf("Failed to apply migrations: %v", err)
 	}
@@ -80,17 +80,16 @@ func setupTestDB(t *testing.T) (*sql.DB, database.Querier) {
 	return db, queries
 }
 
-// Helper do szybkiego wstawiania assetu do bazy (State Injection)
+// insertTestAsset helper quickly inserts a dummy asset into the database for testing state.
 func insertTestAsset(t *testing.T, q database.Querier, folderID int64, path, hash string) database.Asset {
 	ctx := context.Background()
-	// Tworzymy asset z domyślnymi danymi
 	params := database.CreateAssetParams{
 		ScanFolderID:    sql.NullInt64{Int64: folderID, Valid: true},
 		FilePath:        path,
 		FileName:        filepath.Base(path),
 		FileType:        "image",
 		FileHash:        sql.NullString{String: hash, Valid: hash != ""},
-		LastModified:    time.Now().Add(-1 * time.Hour), // Godzinę temu
+		LastModified:    time.Now().Add(-1 * time.Hour), // One hour ago
 		LastScanned:     time.Now().Add(-1 * time.Hour),
 		HasAlphaChannel: sql.NullBool{Bool: false, Valid: true},
 	}
@@ -102,11 +101,12 @@ func insertTestAsset(t *testing.T, q database.Querier, folderID int64, path, has
 	return asset
 }
 
+// setupLogicTest prepares a complete environment for logic testing: DB, Queries, Scanner, and a Temp Directory.
 func setupLogicTest(t *testing.T) (*sql.DB, database.Querier, *scanner.Scanner, string) {
-	conn, queries := setupTestDB(t) // Używamy Twojego helpera z setup_test.go
+	conn, queries := setupTestDB(t)
 	root := t.TempDir()
 
-	// Tworzymy folder skanowania w bazie
+	// Register the temp directory as a scan folder in the DB
 	_, err := queries.CreateScanFolder(context.Background(), root)
 	assert.NoError(t, err)
 
@@ -119,7 +119,7 @@ func setupLogicTest(t *testing.T) (*sql.DB, database.Querier, *scanner.Scanner, 
 	return conn, queries, scanner, root
 }
 
-// --- Helpery bez zmian ---
+// createDummyFile helper creates a file with dummy content.
 func createDummyFile(t *testing.T, path string) {
 	err := os.WriteFile(path, []byte("dummy content"), 0644)
 	if err != nil {
@@ -127,6 +127,7 @@ func createDummyFile(t *testing.T, path string) {
 	}
 }
 
+// MockThumbnailGenerator mocks the thumbnail generation process.
 type MockThumbnailGenerator struct {
 	ShouldFail bool
 }

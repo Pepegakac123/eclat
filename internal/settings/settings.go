@@ -20,7 +20,7 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// ScanFolderDTO - Struktura bezpieczna dla Wails/Frontend
+// ScanFolderDTO is a Data Transfer Object for sending scan folder details to the frontend.
 type ScanFolderDTO struct {
 	ID          int64   `json:"id"`
 	Path        string  `json:"path"`
@@ -30,30 +30,34 @@ type ScanFolderDTO struct {
 	IsDeleted   bool    `json:"isDeleted"`
 }
 
-// AppConfigDTO - Struktura do przesyłania ustawień do UI
+// AppConfigDTO is a Data Transfer Object for sending application configuration to the frontend.
 type AppConfigDTO struct {
 	AllowedExtensions    []string `json:"allowedExtensions"`
 	MaxAllowHashFileSize int64    `json:"maxAllowHashFileSize"`
 }
 
+// WailsRuntime is an interface wrapper around Wails runtime methods to facilitate testing.
 type WailsRuntime interface {
 	OpenDirectoryDialog(ctx context.Context, options wailsRuntime.OpenDialogOptions) (string, error)
 }
 
+// RealWailsRuntime is the production implementation of WailsRuntime.
 type RealWailsRuntime struct{}
 
 func (r *RealWailsRuntime) OpenDirectoryDialog(ctx context.Context, options wailsRuntime.OpenDialogOptions) (string, error) {
 	return wailsRuntime.OpenDirectoryDialog(ctx, options)
 }
 
+// FolderWatcher defines the interface for watching and unwatching file system directories.
 type FolderWatcher interface {
 	Watch(path string)
 	Unwatch(path string)
 }
 
+// KeyAllowedExtensions is the database key for storing allowed file extensions.
 const KeyAllowedExtensions = "allowed_extensions"
 
-// SettingsService odpowiada za konfigurację aplikacji i zarządzanie biblioteką.
+// SettingsService manages application configuration, scan folders, and system integration.
 type SettingsService struct {
 	ctx      context.Context
 	db       database.Querier
@@ -64,7 +68,7 @@ type SettingsService struct {
 	watcher  FolderWatcher
 }
 
-// NewSettingsService tworzy nową instancję serwisu.
+// NewSettingsService creates a new instance of SettingsService.
 func NewSettingsService(db database.Querier, logger *slog.Logger, notifier feedback.Notifier, watcher FolderWatcher, cfg *config.ScannerConfig) *SettingsService {
 	return &SettingsService{
 		db:       db,
@@ -76,7 +80,7 @@ func NewSettingsService(db database.Querier, logger *slog.Logger, notifier feedb
 	}
 }
 
-// Startup jest wywoływany przez Wails przy starcie aplikacji.
+// Startup is called by Wails when the application starts.
 func (s *SettingsService) Startup(ctx context.Context) {
 	s.ctx = ctx
 	s.logger.Info("SettingsService started")
@@ -84,7 +88,7 @@ func (s *SettingsService) Startup(ctx context.Context) {
 
 // --- CONFIG MANAGEMENT ---
 
-// GetConfig zwraca obecne ustawienia aplikacji (bezpieczna kopia dla UI)
+// GetConfig returns a safe copy of the current application configuration for the UI.
 func (s *SettingsService) GetConfig() AppConfigDTO {
 	return AppConfigDTO{
 		AllowedExtensions:    s.config.GetAllowedExtensions(),
@@ -92,7 +96,8 @@ func (s *SettingsService) GetConfig() AppConfigDTO {
 	}
 }
 
-// SetAllowedExtensions aktualizuje listę rozszerzeń w całej aplikacji i ZAPISUJE DO BAZY
+// SetAllowedExtensions updates the list of allowed file extensions in memory and persists it to the database.
+// It validates extensions and warns about dangerous types.
 func (s *SettingsService) SetAllowedExtensions(exts []string) error {
 	var validExts []string
 	var invalidExts []string
@@ -139,6 +144,7 @@ func (s *SettingsService) SetAllowedExtensions(exts []string) error {
 
 // --- FOLDER MANAGEMENT ---
 
+// GetFolders retrieves the list of configured scan folders.
 func (s *SettingsService) GetFolders() ([]ScanFolderDTO, error) {
 	folders, err := s.db.ListScanFolders(s.ctx)
 	if err != nil {
@@ -152,7 +158,8 @@ func (s *SettingsService) GetFolders() ([]ScanFolderDTO, error) {
 	return dtos, nil
 }
 
-// UpdateFolderStatus toggles the active state of a folder and updates visibility of its assets.
+// UpdateFolderStatus toggles the active state of a folder.
+// If a folder is deactivated, its assets are hidden from the library.
 func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (ScanFolderDTO, error) {
 	err := s.db.UpdateScanFolderStatus(s.ctx, database.UpdateScanFolderStatusParams{
 		IsActive: isActive,
@@ -198,7 +205,9 @@ func boolToStatus(active bool) string {
 	return "Paused"
 }
 
-// DeleteFolder - KOSZ
+// DeleteFolder soft-deletes a scan folder.
+// Before deletion, it attempts to move assets to a parent folder if one exists in the library,
+// preserving the assets' history.
 func (s *SettingsService) DeleteFolder(id int64) error {
 	targetFolder, err := s.db.GetScanFolderById(s.ctx, id)
 	if err != nil {
@@ -231,7 +240,8 @@ func (s *SettingsService) DeleteFolder(id int64) error {
 	return s.db.SoftDeleteScanFolder(s.ctx, id)
 }
 
-// AddFolder - Z obsługą przywracania (Restore)
+// AddFolder adds a new directory to the list of scan folders.
+// If the folder was previously deleted, it restores it.
 func (s *SettingsService) AddFolder(path string) (ScanFolderDTO, error) {
 	if !s.ValidatePath(path) {
 		return ScanFolderDTO{}, errors.New("folder does not exist")
@@ -276,7 +286,7 @@ func (s *SettingsService) AddFolder(path string) (ScanFolderDTO, error) {
 	return s.mapToDTO(newFolder), nil
 }
 
-// Helper: mapToDTO konwertuje struct bazy na struct dla Frontendu
+// mapToDTO converts a database ScanFolder model to a frontend DTO.
 func (s *SettingsService) mapToDTO(f database.ScanFolder) ScanFolderDTO {
 	var lastScannedStr *string
 	if f.LastScanned.Valid {
@@ -294,7 +304,8 @@ func (s *SettingsService) mapToDTO(f database.ScanFolder) ScanFolderDTO {
 	}
 }
 
-// Helper
+// findBestParent locates a parent folder in the current library for a given folder.
+// This is used when deleting a subfolder to check if its contents are covered by a root folder.
 func (s *SettingsService) findBestParent(target database.ScanFolder) *database.ScanFolder {
 	allFolders, err := s.db.ListScanFolders(s.ctx)
 	if err != nil {
@@ -325,6 +336,7 @@ func (s *SettingsService) findBestParent(target database.ScanFolder) *database.S
 	return bestParent
 }
 
+// ValidatePath checks if a given path exists and is a directory.
 func (s *SettingsService) ValidatePath(path string) bool {
 	file, err := os.Stat(path)
 	if err != nil {
@@ -333,6 +345,8 @@ func (s *SettingsService) ValidatePath(path string) bool {
 	return file.IsDir()
 }
 
+// OpenInExplorer opens the system file explorer at the specified path.
+// It supports Windows, macOS, and Linux.
 func (s *SettingsService) OpenInExplorer(path string) error {
 	cleanPath := filepath.Clean(path)
 
@@ -353,6 +367,7 @@ func (s *SettingsService) OpenInExplorer(path string) error {
 	return cmd.Start()
 }
 
+// OpenFile opens the specified file in its default associated application.
 func (s *SettingsService) OpenFile(path string) error {
 	cleanPath := filepath.Clean(path)
 
@@ -369,7 +384,7 @@ func (s *SettingsService) OpenFile(path string) error {
 	return cmd.Start()
 }
 
-// OpenFolderPicker otwiera systemowe okno, które widzi TYLKO foldery
+// OpenFolderPicker opens a native system dialog to select a directory.
 func (s *SettingsService) OpenFolderPicker() (string, error) {
 	selection, err := s.wails.OpenDirectoryDialog(s.ctx, wailsRuntime.OpenDialogOptions{
 		Title: "Select Library Folder",
