@@ -32,11 +32,6 @@ export const useScanFolders = () => {
     mutationFn: AddFolder,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scan-folders"] });
-      addToast({
-        title: "Success",
-        description: "Folder added to library",
-        color: "success",
-      });
     },
   });
 
@@ -45,11 +40,6 @@ export const useScanFolders = () => {
     mutationFn: DeleteFolder,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scan-folders"] });
-      addToast({
-        title: "Deleted",
-        description: "Folder removed from library",
-        color: "default",
-      });
     },
   });
 
@@ -57,8 +47,15 @@ export const useScanFolders = () => {
     mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
       return await UpdateFolderStatus(id, isActive);
     },
-    onSuccess: () => {
+    onSuccess: (_, { isActive }) => {
       queryClient.invalidateQueries({ queryKey: ["scan-folders"] });
+    },
+    onError: (error: any) => {
+      addToast({
+        title: "Update Failed",
+        description: error || "Failed to update folder status",
+        color: "danger",
+      });
     },
   });
 
@@ -106,14 +103,40 @@ export const useScanFolders = () => {
 
   const addExtensionMutation = useMutation({
     mutationFn: (ext: string) => AddExtensions([ext]),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["allowed-extensions"] }),
+    onSuccess: (_, ext) => {
+      queryClient.invalidateQueries({ queryKey: ["allowed-extensions"] });
+      addToast({
+        title: "Extension Added",
+        description: `Added ${ext} to allowed list`,
+        color: "success",
+      });
+    },
+    onError: (error: any) => {
+      addToast({
+        title: "Error",
+        description: error || "Failed to add extension",
+        color: "danger",
+      });
+    },
   });
 
   const removeExtensionMutation = useMutation({
     mutationFn: RemoveExtension,
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["allowed-extensions"] }),
+    onSuccess: (_, ext) => {
+      queryClient.invalidateQueries({ queryKey: ["allowed-extensions"] });
+      addToast({
+        title: "Extension Removed",
+        description: `Removed ${ext} from allowed list`,
+        color: "default",
+      });
+    },
+    onError: (error: any) => {
+      addToast({
+        title: "Error",
+        description: error || "Failed to remove extension",
+        color: "danger",
+      });
+    },
   });
 
   const paletteQuery = useQuery({

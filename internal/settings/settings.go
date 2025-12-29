@@ -181,15 +181,15 @@ func (s *SettingsService) UpdateFolderStatus(id int64, isActive bool) (ScanFolde
 		s.logger.Error("Failed to update assets visibility", "folderId", id, "error", err)
 	}
 
-	statusMsg := "restored"
-	if !isActive {
-		statusMsg = "hidden"
+	statusMsg := "paused"
+	if isActive {
+		statusMsg = "active"
 	}
 
 	s.notifier.SendToast(s.ctx, feedback.ToastField{
 		Type:    "info",
-		Title:   "Folder Updated",
-		Message: fmt.Sprintf("Folder is now %s. Assets are %s.", boolToStatus(isActive), statusMsg),
+		Title:   "Folder Status Updated",
+		Message: fmt.Sprintf("Folder is now %s. Please run a scan to update your library.", statusMsg),
 	})
 	updatedFolder, err := s.db.GetScanFolderById(s.ctx, id)
 	if err != nil {
@@ -237,7 +237,15 @@ func (s *SettingsService) DeleteFolder(id int64) error {
 	if s.watcher != nil && targetFolder.Path != "" {
 		s.watcher.Unwatch(targetFolder.Path)
 	}
-	return s.db.SoftDeleteScanFolder(s.ctx, id)
+	err = s.db.SoftDeleteScanFolder(s.ctx, id)
+	if err == nil {
+		s.notifier.SendToast(s.ctx, feedback.ToastField{
+			Type:    "info",
+			Title:   "Folder Removed",
+			Message: "Folder removed. Please run a scan to cleanup the library.",
+		})
+	}
+	return err
 }
 
 // AddFolder adds a new directory to the list of scan folders.
@@ -271,6 +279,13 @@ func (s *SettingsService) AddFolder(path string) (ScanFolderDTO, error) {
 				s.watcher.Watch(absPath)
 			}
 			restored, _ := s.db.GetScanFolderById(s.ctx, existing.ID)
+
+			s.notifier.SendToast(s.ctx, feedback.ToastField{
+				Type:    "success",
+				Title:   "Folder Re-added",
+				Message: "This folder was previously removed. Its monitoring has been resumed. Please run a scan to update your library.",
+			})
+
 			return s.mapToDTO(restored), nil
 		}
 		return ScanFolderDTO{}, errors.New("folder is already in library")
@@ -283,6 +298,13 @@ func (s *SettingsService) AddFolder(path string) (ScanFolderDTO, error) {
 	if s.watcher != nil {
 		s.watcher.Watch(absPath)
 	}
+
+	s.notifier.SendToast(s.ctx, feedback.ToastField{
+		Type:    "success",
+		Title:   "Folder Added",
+		Message: "New source folder added. Please run a scan to import assets.",
+	})
+
 	return s.mapToDTO(newFolder), nil
 }
 

@@ -219,59 +219,64 @@ export default function SettingsPage() {
         <CardHeader className="flex flex-col items-start px-6 pt-6 pb-0">
           <h4 className="text-large font-bold">Add Source Folder</h4>
           <p className="text-small text-default-500">
-            Path must be accessible by the server.
+            Select a folder containing your digital assets.
           </p>
         </CardHeader>
         <CardBody className="px-6 py-6">
-          <div className="flex flex-row gap-2 items-stretch">
-            <Input
-              label="Path"
-              value={pathInput}
-              onChange={(e) => setPathInput(e.target.value)}
-              placeholder="Paste path or browse... (e.g. D:\Assets\SciFi)"
-              startContent={
-                <FolderPlus className="text-default-400" size={20} />
-              }
-              errorMessage={
-                validationState === "invalid"
-                  ? backendError || "Path validation failed locally."
-                  : ""
-              }
-              isInvalid={validationState === "invalid"}
-              color={getInputColor()}
-              description="Backend will validate if path exists on blur."
-              className="flex-1"
-              size="lg"
-              variant="bordered"
-              onBlur={() => handleValidate()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleValidate();
-              }}
-              endContent={
-                <div className="flex items-center gap-2">
-                  {getEndContent()}
-                  <div className="h-6 w-px bg-default-300 mx-1" />{" "}
-                  <Button
-                    isIconOnly
-                    size="sm"
-                    variant="light"
-                    onPress={handleBrowse}
-                    title="Browse Folders"
-                  >
-                    <FolderSearch size={18} className="text-default-500" />
-                  </Button>
-                </div>
-              }
-            />
-            <Button
-              size="lg"
-              color="primary"
-              isDisabled={validationState !== "valid" || isValidating}
-              variant="solid"
-              onPress={handleAddFolder}
-            >
-              Add Library
-            </Button>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-row gap-2 items-end">
+              <Input
+                value={pathInput}
+                onChange={(e) => setPathInput(e.target.value)}
+                placeholder="Paste path or browse... (e.g. D:\Assets\SciFi)"
+                startContent={
+                  <FolderPlus className="text-default-400" size={20} />
+                }
+                isInvalid={validationState === "invalid"}
+                color={getInputColor()}
+                className="flex-1"
+                size="lg"
+                variant="bordered"
+                onBlur={() => handleValidate()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleValidate();
+                }}
+                endContent={
+                  <div className="flex items-center gap-2">
+                    {getEndContent()}
+                    <div className="h-6 w-px bg-default-300 mx-1" />{" "}
+                    <Button
+                      isIconOnly
+                      size="sm"
+                      variant="light"
+                      onPress={handleBrowse}
+                      title="Browse Folders"
+                    >
+                      <FolderSearch size={18} className="text-default-500" />
+                    </Button>
+                  </div>
+                }
+              />
+              <Button
+                size="lg"
+                color="primary"
+                isDisabled={validationState !== "valid" || isValidating}
+                variant="solid"
+                onPress={handleAddFolder}
+              >
+                Add Library
+              </Button>
+            </div>
+            <div className="flex flex-col gap-1 px-1">
+              {validationState === "invalid" && (
+                <p className="text-tiny text-danger">
+                  {backendError || "Please enter a valid folder path."}
+                </p>
+              )}
+              <p className="text-tiny text-default-400">
+                We will automatically check if this folder exists.
+              </p>
+            </div>
           </div>
         </CardBody>
       </Card>
@@ -318,6 +323,13 @@ export default function SettingsPage() {
                         symbol=""
                         className="bg-transparent p-0 text-medium font-medium truncate w-full"
                         codeString={folder.path}
+                        onCopy={() => {
+                          addToast({
+                            title: "Copied to Clipboard",
+                            description: "Folder path copied successfully.",
+                            color: "success",
+                          });
+                        }}
                       >
                         {folder.path}
                       </Snippet>
@@ -375,16 +387,19 @@ export default function SettingsPage() {
         <h2 className="text-2xl font-bold">File Types</h2>
         <Card className="bg-content1">
           <CardBody className="p-6 space-y-4">
-            <div className="flex gap-4 items-end">
-              <Input
-                label="Add Extension"
-                placeholder=".blend, .obj, .png"
-                value={extInput}
-                onValueChange={setExtInput}
-                onKeyDown={handleAddExtension}
-                description="Press Enter to add."
-                className="max-w-xs"
-              />
+            <div className="flex flex-col gap-1">
+              <div className="flex gap-4 items-end">
+                <Input
+                  placeholder=".blend, .obj, .png"
+                  value={extInput}
+                  onValueChange={setExtInput}
+                  onKeyDown={handleAddExtension}
+                  className="max-w-xs"
+                />
+              </div>
+              <p className="text-tiny text-default-400 px-1">
+                Press Enter to add.
+              </p>
             </div>
 
             <Divider />
@@ -402,8 +417,7 @@ export default function SettingsPage() {
               ))}
               {extensions.length === 0 && (
                 <p className="text-default-400 text-sm italic">
-                  No extensions defined. Scanner will allow everything
-                  (dangerous!) or nothing depending on logic.
+                  No file types specified. Please add at least one (e.g., .blend, .png) to start scanning.
                 </p>
               )}
             </div>
