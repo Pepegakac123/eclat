@@ -20,13 +20,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// Scanner is responsible for scanning the file system for assets,
+// generating thumbnails, and synchronizing the state with the database.
 type Scanner struct {
 	mu           sync.RWMutex
 	db           database.Querier
 	conn         *sql.DB
 	logger       *slog.Logger
 	cancelFunc   context.CancelFunc
-	config       *config.ScannerConfig // Wskaźnik na współdzielony config
+	config       *config.ScannerConfig
 	isScanning   atomic.Bool
 	thumbGen     ThumbnailGenerator
 	ctx          context.Context
@@ -35,12 +37,15 @@ type Scanner struct {
 	sessionCache map[string]string
 }
 
+// ScanJob represents a single file scanning task to be processed by a worker.
 type ScanJob struct {
 	Path     string
 	FolderId int64
 	Entry    fs.DirEntry
 }
 
+// ScanResult contains the outcome of a ScanJob, including any errors
+// or database parameters for creating or updating an asset.
 type ScanResult struct {
 	Path          string
 	Err           error
@@ -49,7 +54,7 @@ type ScanResult struct {
 	ExistingPath  string
 }
 
-// fileInfoEntry to adapter, który pozwala użyć fs.FileInfo jako fs.DirEntry
+// fileInfoEntry is an adapter that allows fs.FileInfo to satisfy the fs.DirEntry interface.
 type fileInfoEntry struct {
 	info fs.FileInfo
 }
@@ -59,16 +64,20 @@ func (e fileInfoEntry) IsDir() bool                { return e.info.IsDir() }
 func (e fileInfoEntry) Type() fs.FileMode          { return e.info.Mode().Type() }
 func (e fileInfoEntry) Info() (fs.FileInfo, error) { return e.info, nil }
 
+// Startup initializes the scanner with the provided context.
+// It is called when the application starts.
 func (s *Scanner) Startup(ctx context.Context) {
 	s.ctx = ctx
 }
 
+// Shutdown gracefully stops any ongoing scan and performs necessary cleanup.
 func (s *Scanner) Shutdown() {
 	s.logger.Info("🛑 Stopping Scanner...")
 	s.StopScan()
 }
 
-// NewScanner - Zaktualizowana sygnatura: przyjmuje config!
+// NewScanner creates a new instance of Scanner.
+// It requires a database connection, a thumbnail generator, a logger, and configuration.
 func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger, notifier feedback.Notifier, cfg *config.ScannerConfig) *Scanner {
 	return &Scanner{
 		conn:         conn,
@@ -81,6 +90,8 @@ func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, 
 	}
 }
 
+// CachedAsset represents a minimal subset of asset data needed for synchronization
+// checks during the scanning process.
 type CachedAsset struct {
 	ID           int64
 	LastModified time.Time
@@ -89,6 +100,10 @@ type CachedAsset struct {
 	FilePath     string
 }
 
+// StartScan initiates the background scanning process.
+// It checks all configured folders for new, modified, or deleted files.
+// The scan runs asynchronously and utilizes a worker pool for parallel processing.
+// If a scan is already in progress, this method returns nil immediately.
 func (s *Scanner) StartScan() error {
 	if s.isScanning.Load() {
 		return nil
@@ -96,12 +111,12 @@ func (s *Scanner) StartScan() error {
 	s.isScanning.Store(true)
 	scanCtx, cancel := context.WithCancel(context.Background())
 	s.cancelFunc = cancel
-	// Inicjalizacja cache sesji
+
+	// Initialize session cache
 	s.sessionMu.Lock()
-	// Można zrobić make() ponownie, żeby GC posprzątał starą, to jest bezpieczne
-	// o ile NewScanner zapewnia, że pole nie jest nil na starcie.
 	s.sessionCache = make(map[string]string)
 	s.sessionMu.Unlock()
+
 	jobs := make(chan ScanJob, 100)
 	results := make(chan ScanResult, 100)
 
@@ -180,12 +195,15 @@ func (s *Scanner) StartScan() error {
 	return nil
 }
 
+// StopScan signals the current scan to cancel and stop.
 func (s *Scanner) StopScan() {
 	if s.cancelFunc != nil {
 		s.cancelFunc()
 	}
 }
 
+// Worker consumes ScanJobs from the jobs channel, processes them, and sends the results to the results channel.
+// It handles extension filtering, hashing, database lookups, and decides whether to create a new asset or update an existing one.
 func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan ScanJob, results chan<- ScanResult) {
 	defer wg.Done()
 
@@ -197,7 +215,6 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 			continue
 		}
 
-		// Używamy gettera dla MaxHashFileSize
 		hash, err := CalculateFileHash(job.Path, s.config.GetMaxHashFileSize())
 		if err != nil {
 			s.logger.Warn("Hashing skipped (likely too large)", "path", job.Path, "reason", err)
@@ -230,6 +247,8 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 	}
 }
 
+// processNewAsset handles the logic for a file that is not yet known in the database.
+// It attempts to detect duplicates via hash or heuristics before creating a new asset record.
 func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job ScanJob, fileType, hash string) {
 	if job.Entry == nil {
 		return
@@ -253,7 +272,6 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 	}
 
 	// === PLAN A.5: EXACT MATCH (HASH) - SESSION CACHE LOOKUP ===
-	// Jeśli nie ma w bazie, może inny worker właśnie to przetwarza?
 	if !foundMatch && hash != "" {
 		s.sessionMu.Lock()
 		if cachedGroupID, ok := s.sessionCache[hash]; ok {
@@ -278,7 +296,7 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 		}
 	}
 
-	// Jeśli nadal nic nie znaleźliśmy, generujemy nowe ID
+	// If no match found, generate a new Group ID
 	if !foundMatch {
 		targetGroupID = uuid.New().String()
 		if hash != "" {
@@ -297,6 +315,8 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 	}
 }
 
+// processExistingAsset handles the logic for a file that is already present in the database.
+// It checks for modifications, content changes, moves, or renames.
 func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, exist database.Asset, job ScanJob, fileType, hash string) {
 	if exist.FilePath == job.Path {
 		var isResurrected bool
@@ -366,6 +386,8 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 	}
 }
 
+// Collector collects results from workers, batches them, and commits them to the database.
+// It returns a map of all paths found on disk during the scan.
 func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-chan ScanResult) map[string]bool {
 	const batchSize = 100
 	const emitAfter = 30
@@ -407,6 +429,7 @@ func (s *Scanner) Collector(ctx context.Context, totalToProcess int, results <-c
 	return processed
 }
 
+// ApplyBatch executes a batch of database insertions and updates within a single transaction.
 func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 	tx, err := s.conn.Begin()
 	if err != nil {
@@ -447,6 +470,8 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 	return nil
 }
 
+// generateAssetMetadata creates the necessary metadata parameters for a new or updated asset.
+// It generates a thumbnail and extracts file information.
 func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string, targetGroupID string) (database.CreateAssetParams, error) {
 	thumb, err := s.thumbGen.Generate(ctx, path)
 	if err != nil {
@@ -481,6 +506,8 @@ func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry 
 	return newAsset, nil
 }
 
+// scanDirectory recursively walks a directory, creating ScanJobs for allowed files.
+// It skips subdirectories that are not explicitly part of the scan if necessary (though current logic walks all).
 func (s *Scanner) scanDirectory(scanCtx context.Context, folder database.ScanFolder, jobs chan<- ScanJob) error {
 	if scanCtx.Err() != nil {
 		return scanCtx.Err()
@@ -520,6 +547,9 @@ func (s *Scanner) scanDirectory(scanCtx context.Context, folder database.ScanFol
 	return nil
 }
 
+// ScanFile performs a targeted scan of a single file.
+// This is typically called by the file watcher when a file event occurs.
+// It handles new files, modifications, and deletions.
 func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 	s.logger.Info("⚡ Live Scan triggered", "path", path)
 
@@ -579,6 +609,7 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 	return nil
 }
 
+// resolveFolderID matches a file path to the specific ScanFolder ID it belongs to.
 func (s *Scanner) resolveFolderID(ctx context.Context, filePath string) (int64, error) {
 	folders, err := s.db.ListScanFolders(ctx)
 	if err != nil {
@@ -607,6 +638,8 @@ func (s *Scanner) resolveFolderID(ctx context.Context, filePath string) (int64, 
 	return bestMatchID, nil
 }
 
+// ListenToWatcher consumes file system events from the provided channel
+// and triggers `ScanFile` for each event.
 func (s *Scanner) ListenToWatcher(events <-chan string) {
 	s.logger.Info("🔌 Scanner connected to Watcher events")
 	for path := range events {
@@ -624,6 +657,7 @@ func (s *Scanner) ListenToWatcher(events <-chan string) {
 	}
 }
 
+// getAllFilesCount counts the number of allowed files in a scan folder for progress reporting.
 func (s *Scanner) getAllFilesCount(folder database.ScanFolder) int {
 	var total = 0
 	err := filepath.WalkDir(folder.Path, func(path string, d fs.DirEntry, err error) error {
@@ -645,6 +679,8 @@ func (s *Scanner) getAllFilesCount(folder database.ScanFolder) int {
 	return total
 }
 
+// loadExistingAssets fetches all known assets from the database into a memory map
+// to facilitate fast existence checks during the scan.
 func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsset, error) {
 	s.logger.Info("Loading assets paths to the memmory")
 
@@ -668,6 +704,7 @@ func (s *Scanner) loadExistingAssets(ctx context.Context) (map[string]CachedAsse
 	return existing, nil
 }
 
+// updateAndEmitTotal emits a progress event via the notifier every `emitAfter` items.
 func (s *Scanner) updateAndEmitTotal(total *int, totalToProcess, emitAfter int) {
 	*total++
 	if *total%emitAfter == 0 {
