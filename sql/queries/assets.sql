@@ -162,10 +162,10 @@ DELETE FROM assets WHERE scan_folder_id = ?;
 SELECT
     COUNT(*) as total_count,
     CAST(COALESCE(SUM(file_size), 0) AS INTEGER) as total_size,
-    MAX(a.last_scanned) as last_scan
+    COALESCE(MAX(f.last_scanned), MAX(a.last_scanned)) as last_scan
 FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
-WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND is_hidden = 0;
+WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1;
 
 -- name: GetSidebarStats :one
 SELECT
@@ -223,6 +223,11 @@ WHERE id IN (sqlc.slice('ids'));
 UPDATE assets
 SET is_deleted = 0, deleted_at = NULL
 WHERE id IN (sqlc.slice('ids'));
+
+-- name: UpdateAssetsLastScannedInFolder :exec
+UPDATE assets
+SET last_scanned = ?
+WHERE scan_folder_id = ? AND is_deleted = 0;
 
 -- name: GetAssetsByGroupID :many
 SELECT id, file_name, file_path

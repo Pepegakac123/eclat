@@ -45,14 +45,26 @@ func TestAssetService_GetLibraryStats(t *testing.T) {
 	a2 := insertTestAssetWithParams(t, queries, "file2.png", "/tmp/1/file2.png", false, false)
 	// Insert 1 deleted asset (should not count)
 	insertTestAssetWithParams(t, queries, "deleted.png", "/tmp/1/deleted.png", true, false)
+	// Insert 1 hidden asset (SHOULD count now)
+	insertTestAssetWithParams(t, queries, "hidden.png", "/tmp/1/hidden.png", false, true)
 
 	// Verify they are visible
 	assert.False(t, a1.IsHidden)
 	assert.False(t, a2.IsHidden)
 
+	// Ensure folder is marked as scanned (required since we switched to MAX(f.last_scanned))
+	if a1.ScanFolderID.Valid {
+		queries.UpdateScanFolderLastScanned(context.Background(), database.UpdateScanFolderLastScannedParams{
+			ID:          a1.ScanFolderID.Int64,
+			LastScanned: sql.NullTime{Time: time.Now(), Valid: true},
+		})
+	}
+
 	stats, err := service.GetLibraryStats()
 	assert.NoError(t, err)
-	assert.Equal(t, int64(2), stats.TotalAssets)
+	// 2 visible + 1 hidden = 3
+	assert.Equal(t, int64(3), stats.TotalAssets)
+	assert.NotNil(t, stats.LastScan)
 }
 
 func TestAssetService_GetSidebarStats(t *testing.T) {
@@ -71,18 +83,7 @@ func TestAssetService_GetSidebarStats(t *testing.T) {
 	stats, err := service.GetSidebarStats()
 	assert.NoError(t, err)
 
-	assert.Equal(t, int64(3), stats.TotalAssets) // Normal + Favorite + Hidden? No, SQL usually excludes hidden from TotalAssets
-	// Check SQL query in assets.sql:
-	// AllCount: is_deleted=0 AND is_hidden=0
-	// So: Normal (1) + Favorite (1) = 2. Hidden is excluded.
-
-	// Wait, let's check my logic above:
-	// normal.png: deleted=0, hidden=0 -> Counted
-	// fav.png: deleted=0, hidden=0 -> Counted
-	// trash.png: deleted=1 -> Not counted in AllCount
-	// hidden.png: deleted=0, hidden=1 -> Not counted in AllCount (per query `AND is_hidden = 0`)
-
-	assert.Equal(t, int64(3), stats.TotalAssets)
+	assert.Equal(t, int64(2), stats.TotalAssets) // Normal + Favorite = 2 (Hidden excluded)
 	assert.Equal(t, int64(1), stats.TotalFavorites)
 	assert.Equal(t, int64(1), stats.TotalTrash)
 	assert.Equal(t, int64(1), stats.TotalHidden)

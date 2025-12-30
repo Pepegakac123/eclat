@@ -357,10 +357,10 @@ const getLibraryStats = `-- name: GetLibraryStats :one
 SELECT
     COUNT(*) as total_count,
     CAST(COALESCE(SUM(file_size), 0) AS INTEGER) as total_size,
-    MAX(a.last_scanned) as last_scan
+    COALESCE(MAX(f.last_scanned), MAX(a.last_scanned)) as last_scan
 FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
-WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND is_hidden = 0
+WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1
 `
 
 type GetLibraryStatsRow struct {
@@ -1191,5 +1191,21 @@ type UpdateAssetTypeParams struct {
 
 func (q *Queries) UpdateAssetType(ctx context.Context, arg UpdateAssetTypeParams) error {
 	_, err := q.exec(ctx, q.updateAssetTypeStmt, updateAssetType, arg.FileType, arg.ID)
+	return err
+}
+
+const updateAssetsLastScannedInFolder = `-- name: UpdateAssetsLastScannedInFolder :exec
+UPDATE assets
+SET last_scanned = ?
+WHERE scan_folder_id = ? AND is_deleted = 0
+`
+
+type UpdateAssetsLastScannedInFolderParams struct {
+	LastScanned  time.Time     `json:"lastScanned"`
+	ScanFolderID sql.NullInt64 `json:"scanFolderId"`
+}
+
+func (q *Queries) UpdateAssetsLastScannedInFolder(ctx context.Context, arg UpdateAssetsLastScannedInFolderParams) error {
+	_, err := q.exec(ctx, q.updateAssetsLastScannedInFolderStmt, updateAssetsLastScannedInFolder, arg.LastScanned, arg.ScanFolderID)
 	return err
 }

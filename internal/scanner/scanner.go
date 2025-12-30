@@ -197,7 +197,27 @@ func (s *Scanner) StartScan() error {
 		close(results)   // Close results to let Collector finish
 		foundOnDisk = <-collectorDone
 
+		// Update LastScanned for all processed folders and their assets
+		now := time.Now()
+		for _, f := range folders {
+			if err := s.db.UpdateScanFolderLastScanned(scanCtx, database.UpdateScanFolderLastScannedParams{
+				ID:          f.ID,
+				LastScanned: sql.NullTime{Time: now, Valid: true},
+			}); err != nil {
+				s.logger.Error("Failed to update scan folder timestamp", "id", f.ID, "error", err)
+			}
+
+			// Update all non-deleted assets in this folder to the same scan time
+			if err := s.db.UpdateAssetsLastScannedInFolder(scanCtx, database.UpdateAssetsLastScannedInFolderParams{
+				ScanFolderID: sql.NullInt64{Int64: f.ID, Valid: true},
+				LastScanned:  now,
+			}); err != nil {
+				s.logger.Error("Failed to update assets timestamps in folder", "id", f.ID, "error", err)
+			}
+		}
+
 		s.logger.Info("Scanner finished", "total", totalToProcess)
+		s.notifier.EmitAssetsChanged(s.ctx)
 		s.notifier.SendScannerStatus(s.ctx, feedback.Idle)
 
 		// 7. Mark-and-Sweep Cleanup:

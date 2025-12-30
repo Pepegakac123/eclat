@@ -25,6 +25,7 @@ import { InspectorProperties } from "./single/InspectorProperties";
 import { InspectorTags } from "./single/InspectorTags";
 import { InspectorTabs } from "./single/InspectorTabs";
 import { InspectorFooter } from "./single/InspectorFooter";
+import { InspectorLibraryStats } from "./InspectorLibraryStats";
 
 // --- HELPER: SECTION HEADER ---
 const SectionHeader = ({
@@ -72,17 +73,7 @@ export const InspectorPanel = () => {
 
   // --- BRAK SELEKCJI ---
   if (selectionCount === 0) {
-    return (
-      <div className="h-full w-full flex flex-col items-center justify-center text-default-300 gap-4 p-8 text-center">
-        <div className="w-16 h-16 rounded-full bg-default-100 flex items-center justify-center">
-          <XCircle size={32} className="opacity-50" />
-        </div>
-        <div>
-          <h3 className="text-md font-medium text-default-500">No Selection</h3>
-          <p className="text-tiny">Select an asset to view details</p>
-        </div>
-      </div>
-    );
+    return <InspectorLibraryStats />;
   }
 
   // --- MULTI SELECT ---

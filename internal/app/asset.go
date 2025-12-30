@@ -625,8 +625,17 @@ func (s *AssetService) GetLibraryStats() (*LibraryStats, error) {
 	// Konwersja z sql.NullTime (interface{})
 	var lastScan *time.Time
 	if stats.LastScan != nil {
-		if t, ok := stats.LastScan.(time.Time); ok {
-			lastScan = &t
+		switch v := stats.LastScan.(type) {
+		case time.Time:
+			lastScan = &v
+		case []byte:
+			// SQLite driver sometimes returns []byte for strings
+			sVal := string(v)
+			lastScan = parseTime(sVal, s.logger)
+		case string:
+			lastScan = parseTime(v, s.logger)
+		default:
+			s.logger.Warn("Unknown type for LastScan", "type", fmt.Sprintf("%T", v), "value", v)
 		}
 	}
 
@@ -636,6 +645,30 @@ func (s *AssetService) GetLibraryStats() (*LibraryStats, error) {
 		LastScan:    lastScan,
 	}, nil
 }
+
+func parseTime(v string, logger *slog.Logger) *time.Time {
+	// Strip monotonic clock info if present (e.g., " ... m=+123.456")
+	if idx := strings.Index(v, " m="); idx != -1 {
+		v = v[:idx]
+	}
+
+	formats := []string{
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		time.RFC3339,
+		time.RFC3339Nano,
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, v); err == nil {
+			return &t
+		}
+	}
+	logger.Warn("Could not parse LastScan string", "value", v)
+	return nil
+}
+
 
 // GetSidebarStats zwraca liczniki dla menu bocznego (All, Favorites, Trash, Hidden, Uncategorized).
 func (s *AssetService) GetSidebarStats() (*SidebarStats, error) {
