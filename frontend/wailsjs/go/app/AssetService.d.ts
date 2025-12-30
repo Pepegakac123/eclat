@@ -23,6 +23,8 @@ export function MigrateThumbnailPaths():Promise<void>;
 
 export function RemoveAssetFromMaterialSet(arg1:number,arg2:number):Promise<void>;
 
+export function RenameAsset(arg1:number,arg2:string):Promise<void>;
+
 export function RestoreAssets(arg1:Array<number>):Promise<void>;
 
 export function SetAssetHidden(arg1:number,arg2:boolean):Promise<void>;

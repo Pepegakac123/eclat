@@ -827,6 +827,50 @@ func (q *Queries) RefreshAssetTechnicalMetadata(ctx context.Context, arg Refresh
 	return err
 }
 
+const renameAsset = `-- name: RenameAsset :one
+UPDATE assets
+SET file_name = ?, file_path = ?
+WHERE id = ?
+RETURNING id, scan_folder_id, group_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden
+`
+
+type RenameAssetParams struct {
+	FileName string `json:"fileName"`
+	FilePath string `json:"filePath"`
+	ID       int64  `json:"id"`
+}
+
+func (q *Queries) RenameAsset(ctx context.Context, arg RenameAssetParams) (Asset, error) {
+	row := q.queryRow(ctx, q.renameAssetStmt, renameAsset, arg.FileName, arg.FilePath, arg.ID)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.ScanFolderID,
+		&i.GroupID,
+		&i.FileName,
+		&i.FilePath,
+		&i.FileType,
+		&i.FileSize,
+		&i.ThumbnailPath,
+		&i.Rating,
+		&i.Description,
+		&i.IsFavorite,
+		&i.ImageWidth,
+		&i.ImageHeight,
+		&i.DominantColor,
+		&i.BitDepth,
+		&i.HasAlphaChannel,
+		&i.DateAdded,
+		&i.LastScanned,
+		&i.LastModified,
+		&i.FileHash,
+		&i.IsDeleted,
+		&i.DeletedAt,
+		&i.IsHidden,
+	)
+	return i, err
+}
+
 const restoreAsset = `-- name: RestoreAsset :exec
 UPDATE assets
 SET is_deleted = 0, deleted_at = NULL

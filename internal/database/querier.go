@@ -54,6 +54,7 @@ type Querier interface {
 	RefreshAssetTechnicalMetadata(ctx context.Context, arg RefreshAssetTechnicalMetadataParams) error
 	RemoveAssetFromMaterialSet(ctx context.Context, arg RemoveAssetFromMaterialSetParams) error
 	RemoveTagFromAsset(ctx context.Context, arg RemoveTagFromAssetParams) error
+	RenameAsset(ctx context.Context, arg RenameAssetParams) (Asset, error)
 	RestoreAsset(ctx context.Context, id int64) error
 	RestoreAssets(ctx context.Context, ids []int64) error
 	RestoreScanFolder(ctx context.Context, id int64) error

@@ -8,6 +8,7 @@ import {
 	DropdownTrigger,
 } from "@heroui/dropdown";
 import { Image } from "@heroui/image";
+import { Input } from "@heroui/input";
 import {
 	Modal,
 	ModalBody,
@@ -20,6 +21,8 @@ import type { app } from "@wailsjs/go/models";
 import {
 	Box,
 	Edit,
+	Eye,
+	EyeOff,
 	FileBox,
 	FolderOpen,
 	FolderPlus,
@@ -67,8 +70,18 @@ export const AssetCard = ({
 	const [isHovered, setIsHovered] = useState(false);
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+	const [isRenameOpen, setIsRenameOpen] = useState(false);
+	const [newName, setNewName] = useState(fileName);
+	const [renameError, setRenameError] = useState("");
 	const [displayThumb, setDisplayThumb] = useState<string>("");
-	const { toggleFavorite, deleteAsset, isDeleting } = useAssetActions(asset.id);
+	const {
+		toggleFavorite,
+		deleteAsset,
+		toggleHidden,
+		renameAsset,
+		isDeleting,
+		isRenaming,
+	} = useAssetActions(asset.id);
 
 	useEffect(() => {
 		const loadThumb = async () => {
@@ -127,12 +140,41 @@ export const AssetCard = ({
 	const handleMenuAction = (key: React.Key) => {
 		if (key === "delete") {
 			setIsDeleteOpen(true);
+		} else if (key === "toggle-hidden") {
+			toggleHidden(!asset.isHidden);
+		} else if (key === "rename") {
+			setNewName(fileName);
+			setRenameError("");
+			setIsRenameOpen(true);
 		}
 	};
 
 	const handleDeleteConfirm = () => {
 		deleteAsset(undefined, {
 			onSuccess: () => setIsDeleteOpen(false),
+		});
+	};
+
+	const handleRenameSubmit = () => {
+		// Validation
+		if (!newName.trim()) {
+			setRenameError("Filename cannot be empty");
+			return;
+		}
+		if (/[\\/:*?"<>|]/.test(newName)) {
+			setRenameError('Filename cannot contain characters: \\ / : * ? " < > |');
+			return;
+		}
+		if (newName === fileName) {
+			setIsRenameOpen(false);
+			return;
+		}
+
+		renameAsset(newName, {
+			onSuccess: () => setIsRenameOpen(false),
+			onError: (error: any) => {
+				setRenameError(error?.message || "Failed to rename asset");
+			},
 		});
 	};
 
@@ -200,6 +242,17 @@ export const AssetCard = ({
 							/>
 						</Button>
 
+						<Button
+							isIconOnly
+							size="sm"
+							radius="full"
+							variant="light"
+							className="bg-black/40 text-white backdrop-blur-md hover:bg-black/60"
+							onPress={() => toggleHidden(!asset.isHidden)}
+						>
+							{asset.isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
+						</Button>
+
 						<Dropdown placement="bottom-end" onOpenChange={setIsMenuOpen}>
 							<DropdownTrigger>
 								<Button
@@ -218,6 +271,14 @@ export const AssetCard = ({
 							>
 								<DropdownItem key="rename" startContent={<Edit size={16} />}>
 									Rename
+								</DropdownItem>
+								<DropdownItem
+									key="toggle-hidden"
+									startContent={
+										asset.isHidden ? <Eye size={16} /> : <EyeOff size={16} />
+									}
+								>
+									{asset.isHidden ? "Unhide" : "Hide"}
 								</DropdownItem>
 								<DropdownItem
 									key="add-set"
@@ -282,6 +343,7 @@ export const AssetCard = ({
 				</CardFooter>
 			</Card>
 
+			{/* Delete Modal */}
 			<Modal isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)}>
 				<ModalContent>
 					{(onClose) => (
@@ -306,6 +368,53 @@ export const AssetCard = ({
 									isLoading={isDeleting}
 								>
 									Delete
+								</Button>
+							</ModalFooter>
+						</>
+					)}
+				</ModalContent>
+			</Modal>
+
+			{/* Rename Modal */}
+			<Modal isOpen={isRenameOpen} onClose={() => setIsRenameOpen(false)}>
+				<ModalContent>
+					{(onClose) => (
+						<>
+							<ModalHeader className="flex flex-col gap-1">
+								Rename Asset
+							</ModalHeader>
+							<ModalBody>
+								<p className="text-sm text-default-500 mb-2">
+									Renaming this asset will also rename the file on your system
+									path: <br />
+									<span className="font-mono text-xs">{filePath}</span>
+								</p>
+								<Input
+									autoFocus
+									label="Filename"
+									placeholder="Enter new filename"
+									value={newName}
+									onValueChange={(val) => {
+										setNewName(val);
+										setRenameError("");
+									}}
+									isInvalid={!!renameError}
+									errorMessage={renameError}
+									onKeyDown={(e) => {
+										if (e.key === "Enter") handleRenameSubmit();
+									}}
+								/>
+							</ModalBody>
+							<ModalFooter>
+								<Button color="default" variant="light" onPress={onClose}>
+									Cancel
+								</Button>
+								<Button
+									color="primary"
+									onPress={handleRenameSubmit}
+									isLoading={isRenaming}
+								>
+									Rename
 								</Button>
 							</ModalFooter>
 						</>

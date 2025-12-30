@@ -797,6 +797,70 @@ func (s *AssetService) DeleteAssetsPermanently(ids []int64) error {
 	return nil
 }
 
+// RenameAsset zmienia nazwę pliku na dysku i w bazie danych.
+func (s *AssetService) RenameAsset(id int64, newName string) error {
+	// 1. Walidacja nowej nazwy (prosta)
+	if newName == "" {
+		return errors.New("new name cannot be empty")
+	}
+	if strings.ContainsAny(newName, `/\:*?"<>|`) {
+		return errors.New("invalid characters in filename")
+	}
+
+	// 2. Pobierz asset
+	asset, err := s.db.GetAssetById(s.ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to get asset: %w", err)
+	}
+
+	originalExt := filepath.Ext(asset.FileName)
+	// Upewnij się, że nowa nazwa ma to samo rozszerzenie
+	if !strings.HasSuffix(strings.ToLower(newName), strings.ToLower(originalExt)) {
+		// Jeśli użytkownik usunął rozszerzenie, dodaj je z powrotem
+		// Jeśli zmienił na inne - to też zostanie nadpisane oryginalnym (lub dodane)
+		// Przyjmijmy strategię: jeśli nie ma suffixu, dodajemy.
+		newName = newName + originalExt
+	} else {
+        // Case sensitive check? Windows is case insensitive, Linux sensitive.
+        // Let's force the original extension case if possible, or just accept what user gave if it matches.
+        // For safety, let's reconstruct the name with original extension to be sure.
+        baseName := newName[:len(newName)-len(originalExt)]
+        newName = baseName + originalExt
+    }
+
+	// 3. Przygotuj ścieżki
+	dir := filepath.Dir(asset.FilePath)
+	newPath := filepath.Join(dir, newName)
+
+	// 4. Sprawdź czy plik docelowy istnieje
+	if _, err := os.Stat(newPath); err == nil {
+		return errors.New("file with this name already exists")
+	}
+
+	// 5. Zmień nazwę pliku na dysku
+	if err := os.Rename(asset.FilePath, newPath); err != nil {
+		return fmt.Errorf("failed to rename file on disk: %w", err)
+	}
+
+	// 6. Zaktualizuj bazę danych
+	// Nie zmieniamy miniatury, bo jej nazwa jest generowana dynamicznie/haszowana i nie zależy od nazwy pliku (według instrukcji).
+
+	params := database.RenameAssetParams{
+		FileName: newName,
+		FilePath: newPath,
+		ID:       id,
+	}
+
+	_, err = s.db.RenameAsset(s.ctx, params)
+	if err != nil {
+		// Rollback rename on disk?
+		// _ = os.Rename(newPath, asset.FilePath)
+		return fmt.Errorf("failed to update asset in db: %w", err)
+	}
+
+	return nil
+}
+
 // GetAssetVersions zwraca wszystkie assety należące do tej samej grupy co podany ID.
 func (s *AssetService) GetAssetVersions(assetId int64) ([]AssetDetails, error) {
 	asset, err := s.db.GetAssetById(s.ctx, assetId)

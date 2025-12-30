@@ -42,6 +42,10 @@ export function RemoveAssetFromMaterialSet(arg1, arg2) {
   return window['go']['app']['AssetService']['RemoveAssetFromMaterialSet'](arg1, arg2);
 }
 
+export function RenameAsset(arg1, arg2) {
+  return window['go']['app']['AssetService']['RenameAsset'](arg1, arg2);
+}
+
 export function RestoreAssets(arg1) {
   return window['go']['app']['AssetService']['RestoreAssets'](arg1);
 }

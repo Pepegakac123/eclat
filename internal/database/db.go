@@ -156,6 +156,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.removeTagFromAssetStmt, err = db.PrepareContext(ctx, removeTagFromAsset); err != nil {
 		return nil, fmt.Errorf("error preparing query RemoveTagFromAsset: %w", err)
 	}
+	if q.renameAssetStmt, err = db.PrepareContext(ctx, renameAsset); err != nil {
+		return nil, fmt.Errorf("error preparing query RenameAsset: %w", err)
+	}
 	if q.restoreAssetStmt, err = db.PrepareContext(ctx, restoreAsset); err != nil {
 		return nil, fmt.Errorf("error preparing query RestoreAsset: %w", err)
 	}
@@ -438,6 +441,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing removeTagFromAssetStmt: %w", cerr)
 		}
 	}
+	if q.renameAssetStmt != nil {
+		if cerr := q.renameAssetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing renameAssetStmt: %w", cerr)
+		}
+	}
 	if q.restoreAssetStmt != nil {
 		if cerr := q.restoreAssetStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing restoreAssetStmt: %w", cerr)
@@ -616,6 +624,7 @@ type Queries struct {
 	refreshAssetTechnicalMetadataStmt *sql.Stmt
 	removeAssetFromMaterialSetStmt    *sql.Stmt
 	removeTagFromAssetStmt            *sql.Stmt
+	renameAssetStmt                   *sql.Stmt
 	restoreAssetStmt                  *sql.Stmt
 	restoreAssetsStmt                 *sql.Stmt
 	restoreScanFolderStmt             *sql.Stmt
@@ -685,6 +694,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		refreshAssetTechnicalMetadataStmt: q.refreshAssetTechnicalMetadataStmt,
 		removeAssetFromMaterialSetStmt:    q.removeAssetFromMaterialSetStmt,
 		removeTagFromAssetStmt:            q.removeTagFromAssetStmt,
+		renameAssetStmt:                   q.renameAssetStmt,
 		restoreAssetStmt:                  q.restoreAssetStmt,
 		restoreAssetsStmt:                 q.restoreAssetsStmt,
 		restoreScanFolderStmt:             q.restoreScanFolderStmt,
