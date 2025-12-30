@@ -16,6 +16,8 @@ import {
 	type MaterialSetForm,
 	MaterialSetFormModal,
 } from "@/layouts/sidebar/MaterialSetFormModal";
+import { useQuery } from "@tanstack/react-query";
+import { GetAssetById } from "@wailsjs/go/app/AssetService";
 
 interface AddToCollectionModalProps {
 	isOpen: boolean;
@@ -36,6 +38,14 @@ export const AddToCollectionModal = ({
 		setCoverFromFile,
 	} = useMaterialSets();
 
+	// Fetch full asset details to get up-to-date material sets
+	const { data: fullAsset } = useQuery({
+		queryKey: ["asset", asset.id],
+		queryFn: () => GetAssetById(asset.id),
+		enabled: isOpen,
+		// We don't use initialData from props because it lacks materialSets
+	});
+
 	const [searchQuery, setSearchQuery] = useState("");
 	const [loadingSetId, setLoadingSetId] = useState<number | null>(null);
 
@@ -50,8 +60,9 @@ export const AddToCollectionModal = ({
 	}, [materialSets, searchQuery]);
 
 	const assetSetIds = useMemo(() => {
-		return (asset.materialSets || []).map((s) => s.id);
-	}, [asset.materialSets]);
+		// Use fullAsset if available, otherwise fallback to empty (or prop if it had any)
+		return (fullAsset?.materialSets || []).map((s) => s.id);
+	}, [fullAsset]);
 
 	const handleToggle = async (setId: number, isAdded: boolean) => {
 		setLoadingSetId(setId);
