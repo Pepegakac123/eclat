@@ -1,10 +1,10 @@
-import { assetService } from "@/services/assetService";
+import { GetSidebarStats } from "../../../../wailsjs/go/app/AssetService";
 import { useQuery } from "@tanstack/react-query";
 
 export const useAssetsStats = () => {
   const getSidebarStats = useQuery({
     queryKey: ["sidebar-stats"],
-    queryFn: () => assetService.getSidebarStats(),
+    queryFn: GetSidebarStats,
   });
   return {
     sidebarStats: getSidebarStats.data,

@@ -6,9 +6,13 @@ import (
 	"eclat/internal/scanner"
 	"eclat/internal/settings"
 	"eclat/internal/watcher"
+	"fmt"
 	"log/slog"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct holds the application state and core service dependencies.
@@ -54,7 +58,7 @@ func (a *App) OnStartup(ctx context.Context) {
 // This is exposed publicly to allow invocation from the single instance lock mechanism in main.go.
 func (a *App) RestoreWindow() {
 	if a.ctx != nil {
-		runtime.WindowShow(a.ctx)
+		wailsRuntime.WindowShow(a.ctx)
 	}
 }
 
@@ -66,4 +70,44 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.Watcher != nil {
 		a.Watcher.Shutdown()
 	}
+}
+
+// OpenInExplorer opens the file explorer and selects the file at the given path.
+func (a *App) OpenInExplorer(path string) error {
+	a.logger.Info("Opening in explorer", "path", path)
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", "/select,", path)
+	case "darwin":
+		cmd = exec.Command("open", "-R", path)
+	case "linux":
+		// Try dbus-send first for selecting file (Nautilus, Dolphin, etc.)
+		// This is experimental, fallback to opening parent dir
+		cmd = exec.Command("xdg-open", filepath.Dir(path))
+	default:
+		return fmt.Errorf("unsupported platform")
+	}
+
+	return cmd.Start()
+}
+
+// OpenInDefaultApp opens the file using the system's default application.
+func (a *App) OpenInDefaultApp(path string) error {
+	a.logger.Info("Opening in default app", "path", path)
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", path)
+	case "darwin":
+		cmd = exec.Command("open", path)
+	case "linux":
+		cmd = exec.Command("xdg-open", path)
+	default:
+		return fmt.Errorf("unsupported platform")
+	}
+
+	return cmd.Start()
 }

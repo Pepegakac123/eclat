@@ -29,7 +29,9 @@ func TestAssetService_GetAssetById(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, asset.ID, details.ID)
 	assert.Equal(t, asset.FileName, details.FileName)
-	assert.Equal(t, asset.GroupID, details.GroupID)
+	if assert.NotNil(t, details.GroupID) {
+		assert.Equal(t, asset.GroupID, *details.GroupID)
+	}
 	assert.Contains(t, details.Tags, "Nature")
 }
 
@@ -172,4 +174,83 @@ func TestAssetService_UpdateAssetType(t *testing.T) {
 	// Invalid switch (to unsupported type)
 	err = service.UpdateAssetType(asset.ID, "audio")
 	assert.Error(t, err)
+}
+
+func TestAssetService_GetAssets(t *testing.T) {
+	service, queries := setupAssetServiceTest(t)
+	ctx := context.Background()
+
+	// 1. Prepare Data
+	// Asset 1: "Alpha", Rating 5, Favorite, Tag "Red"
+	a1 := insertTestAssetWithParams(t, queries, "Alpha.png", "/tmp/Alpha.png", false, false)
+	service.SetAssetRating(a1.ID, 5)
+	service.ToggleAssetFavorite(a1.ID)
+
+	tagRed, _ := queries.CreateTag(ctx, "Red")
+	queries.AddTagToAsset(ctx, database.AddTagToAssetParams{AssetID: a1.ID, TagID: tagRed.ID})
+
+	// Asset 2: "Beta", Rating 3, Not Favorite, Tag "Blue"
+	a2 := insertTestAssetWithParams(t, queries, "Beta.png", "/tmp/Beta.png", false, false)
+	service.SetAssetRating(a2.ID, 3)
+
+	tagBlue, _ := queries.CreateTag(ctx, "Blue")
+	queries.AddTagToAsset(ctx, database.AddTagToAssetParams{AssetID: a2.ID, TagID: tagBlue.ID})
+
+	// Asset 3: "Gamma", Rating 1, Not Favorite, No Tags
+	a3 := insertTestAssetWithParams(t, queries, "Gamma.png", "/tmp/Gamma.png", false, false)
+	service.SetAssetRating(a3.ID, 1)
+
+	// Asset 4: Deleted (Should not appear)
+	insertTestAssetWithParams(t, queries, "Deleted.png", "/tmp/Deleted.png", true, false)
+
+	// 2. Test Cases
+
+	// Case A: No Filters (Should get 3 assets)
+	res, err := service.GetAssets(AssetQueryFilters{
+		Page:     1,
+		PageSize: 10,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 3, res.TotalCount)
+	assert.Len(t, res.Items, 3)
+
+	// Case B: Search Query "Alpha"
+	res, err = service.GetAssets(AssetQueryFilters{
+		Page:     1,
+		PageSize: 10,
+		Query:    "Alpha",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, res.TotalCount)
+	assert.Equal(t, a1.FileName, res.Items[0].FileName)
+
+	// Case C: Rating Range [4, 5] (Should get Alpha)
+	res, err = service.GetAssets(AssetQueryFilters{
+		Page:        1,
+		PageSize:    10,
+		RatingRange: []int{4, 5},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, res.TotalCount)
+	assert.Equal(t, a1.ID, res.Items[0].ID)
+
+	// Case D: Only Favorites (Should get Alpha)
+	res, err = service.GetAssets(AssetQueryFilters{
+		Page:          1,
+		PageSize:      10,
+		OnlyFavorites: true,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, res.TotalCount)
+	assert.Equal(t, a1.ID, res.Items[0].ID)
+
+	// Case E: Tag "Blue" (Should get Beta)
+	res, err = service.GetAssets(AssetQueryFilters{
+		Page:     1,
+		PageSize: 10,
+		Tags:     []string{"Blue"},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, res.TotalCount)
+	assert.Equal(t, a2.ID, res.Items[0].ID)
 }

@@ -41,9 +41,9 @@ func setupTestDB(t *testing.T) (*sql.DB, database.Querier) {
 
 // setupAssetServiceTest creates an AssetService with a test DB and logger.
 func setupAssetServiceTest(t *testing.T) (*AssetService, database.Querier) {
-	_, queries := setupTestDB(t)
+	sysDB, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := NewAssetService(queries, logger)
+	service := NewAssetService(queries, sysDB, logger)
 	service.Startup(context.Background())
 	return service, queries
 }

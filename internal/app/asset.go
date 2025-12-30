@@ -7,18 +7,25 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"strings"
 	"time"
+
+	sq "github.com/Masterminds/squirrel"
 )
 
+// AssetService - Serwis (Zaktualizowany o sysDB)
 type AssetService struct {
 	ctx    context.Context
 	db     database.Querier
+	sysDB  *sql.DB
 	logger *slog.Logger
 }
 
-func NewAssetService(db database.Querier, logger *slog.Logger) *AssetService {
+func NewAssetService(db database.Querier, sysDB *sql.DB, logger *slog.Logger) *AssetService {
 	return &AssetService{
 		db:     db,
+		sysDB:  sysDB,
 		logger: logger,
 	}
 }
@@ -43,64 +50,57 @@ type AssetDetails struct {
 	LastModified  time.Time `json:"lastModified"`
 	FileSize      int64     `json:"fileSize"`
 
-	// Metadane edytowalne
+	// Nowe pola (Naprawione błędy undefined)
+	ImageWidth    int64  `json:"imageWidth"`
+	ImageHeight   int64  `json:"imageHeight"`
+	FileExtension string `json:"fileExtension"`
+
+	// Metadane
 	Rating      int64  `json:"rating"`
 	IsFavorite  bool   `json:"isFavorite"`
 	Description string `json:"description"`
 	IsDeleted   bool   `json:"isDeleted"`
 	IsHidden    bool   `json:"isHidden"`
 
-	// Relacje i Grupowanie
-	GroupID       string   `json:"groupId"`
+	// Relacje
+	GroupID       *string  `json:"groupId"`
 	Tags          []string `json:"tags"`
 	MaterialSets  []string `json:"materialSets"`
 	DominantColor string   `json:"dominantColor"`
 }
-
 type AssetSibling struct {
 	ID       int64  `json:"id"`
 	FilePath string `json:"filePath"`
 	FileName string `json:"fileName"`
 }
 
-// AssetQueryFilters odzwierciedla obiekt filtrów z useGalleryStore.ts
+// AssetQueryFilters - Filtry z Frontendu
 type AssetQueryFilters struct {
-	// Paginacja
-	Page     int `json:"page"`
-	PageSize int `json:"pageSize"`
-
-	// Wyszukiwanie i Tagi
+	Page         int      `json:"page"`
+	PageSize     int      `json:"pageSize"`
 	Query        string   `json:"searchQuery"`
 	Tags         []string `json:"tags"`
 	MatchAllTags bool     `json:"matchAllTags"`
+	FileTypes    []string `json:"fileTypes"`
+	Colors       []string `json:"colors"`
 
-	// Listy
-	FileTypes []string `json:"fileTypes"`
-	Colors    []string `json:"colors"`
-
-	// Zakresy (Ranges)
 	RatingRange   []int `json:"ratingRange"`   // [min, max]
 	WidthRange    []int `json:"widthRange"`    // [min, max]
 	HeightRange   []int `json:"heightRange"`   // [min, max]
-	FileSizeRange []int `json:"fileSizeRange"` // [min, max] w MB
+	FileSizeRange []int `json:"fileSizeRange"` // [min, max] MB
 
-	// Data
 	DateRange struct {
 		From *string `json:"from"`
 		To   *string `json:"to"`
 	} `json:"dateRange"`
 
-	// Specjalne
-	HasAlpha      *bool `json:"hasAlpha"` // null = wszystkie, true = z alpha, false = bez
-	OnlyFavorites bool  `json:"onlyFavorites"`
+	HasAlpha      *bool  `json:"hasAlpha"`
+	OnlyFavorites bool   `json:"onlyFavorites"`
+	IsDeleted     bool   `json:"isDeleted"`
+	IsHidden      bool   `json:"isHidden"`
+	CollectionID  *int64 `json:"collectionId"`
 
-	// Kontekst
-	IsDeleted    bool   `json:"isDeleted"`
-	IsHidden     bool   `json:"isHidden"`
-	CollectionID *int64 `json:"collectionId"`
-
-	// Sortowanie
-	SortOption string `json:"sortOption"` // "dateadded", "filename", "filesize", "lastmodified", "rating"
+	SortOption string `json:"sortOption"`
 	SortDesc   bool   `json:"sortDesc"`
 }
 
@@ -138,6 +138,281 @@ type UpdateAssetRequest struct {
 // Asset Logic Implementation
 // ==========================================
 
+// GetAssets to główna metoda galerii, obsługująca dynamiczne filtrowanie.
+func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, error) {
+	// Inicjalizacja Buildera dla SQLite
+	psql := sq.StatementBuilder.PlaceholderFormat(sq.Question)
+
+	// Bazowe zapytanie
+	base := psql.Select(
+		"a.id", "a.file_name", "a.file_path", "a.file_type", "a.file_size",
+		"a.thumbnail_path", "a.date_added", "a.last_modified",
+		"a.image_width", "a.image_height", "a.dominant_color",
+		"a.rating", "a.is_favorite", "a.is_deleted", "a.is_hidden", "a.group_id",
+		"a.has_alpha_channel",
+	).From("assets a")
+
+	// Jeśli nie szukamy w koszu, filtrujemy po folderach
+	if !filters.IsDeleted {
+		base = base.Join("scan_folders f ON a.scan_folder_id = f.id").
+			Where(sq.Eq{"f.is_deleted": 0}).
+			Where(sq.Eq{"f.is_active": 1})
+	}
+
+	// Filtrowanie Podstawowe
+	base = base.Where(sq.Eq{"a.is_deleted": filters.IsDeleted})
+	base = base.Where(sq.Eq{"a.is_hidden": filters.IsHidden})
+
+	if filters.OnlyFavorites {
+		base = base.Where(sq.Eq{"a.is_favorite": 1})
+	}
+
+	// Filtrowanie po Kolekcji
+	if filters.CollectionID != nil {
+		base = base.Join("material_set_assets msa ON a.id = msa.asset_id").
+			Where(sq.Eq{"msa.material_set_id": *filters.CollectionID})
+	}
+
+	// Wyszukiwanie Tekstowe
+	if filters.Query != "" {
+		like := "%" + filters.Query + "%"
+		base = base.Where(sq.Or{
+			sq.Like{"a.file_name": like},
+			sq.Like{"a.file_path": like},
+		})
+	}
+
+	// === ZAKRESY (Poprawione Gte -> GtOrEq, Lte -> LtOrEq) ===
+
+	// Rating
+	if len(filters.RatingRange) == 2 {
+		base = base.Where(sq.GtOrEq{"a.rating": filters.RatingRange[0]})
+		base = base.Where(sq.LtOrEq{"a.rating": filters.RatingRange[1]})
+	}
+
+	// File Size (MB -> Bytes)
+	if len(filters.FileSizeRange) == 2 {
+		minBytes := int64(filters.FileSizeRange[0]) * 1024 * 1024
+		maxBytes := int64(filters.FileSizeRange[1]) * 1024 * 1024
+		base = base.Where(sq.GtOrEq{"a.file_size": minBytes})
+		base = base.Where(sq.LtOrEq{"a.file_size": maxBytes})
+	}
+
+	// Width
+	if len(filters.WidthRange) == 2 && filters.WidthRange[1] > 0 {
+		base = base.Where(sq.GtOrEq{"a.image_width": filters.WidthRange[0]})
+		base = base.Where(sq.LtOrEq{"a.image_width": filters.WidthRange[1]})
+	}
+
+	// Height
+	if len(filters.HeightRange) == 2 && filters.HeightRange[1] > 0 {
+		base = base.Where(sq.GtOrEq{"a.image_height": filters.HeightRange[0]})
+		base = base.Where(sq.LtOrEq{"a.image_height": filters.HeightRange[1]})
+	}
+
+	// Daty
+	if filters.DateRange.From != nil && *filters.DateRange.From != "" {
+		base = base.Where(sq.GtOrEq{"a.date_added": *filters.DateRange.From})
+	}
+	if filters.DateRange.To != nil && *filters.DateRange.To != "" {
+		base = base.Where(sq.LtOrEq{"a.date_added": *filters.DateRange.To})
+	}
+
+	// Typy plików
+	if len(filters.FileTypes) > 0 {
+		base = base.Where(sq.Eq{"a.file_type": filters.FileTypes})
+	}
+
+	// Kolory
+	if len(filters.Colors) > 0 {
+		base = base.Where(sq.Eq{"a.dominant_color": filters.Colors})
+	}
+
+	// Alpha Channel
+	if filters.HasAlpha != nil {
+		val := 0
+		if *filters.HasAlpha {
+			val = 1
+		}
+		base = base.Where(sq.Eq{"a.has_alpha_channel": val})
+	}
+
+	// Tagi (Subquery)
+	if len(filters.Tags) > 0 {
+		tagSubQ := sq.Select("at.asset_id").
+			From("asset_tags at").
+			Join("tags t ON at.tag_id = t.id").
+			Where(sq.Eq{"t.name": filters.Tags})
+
+		if filters.MatchAllTags {
+			tagSubQ = tagSubQ.GroupBy("at.asset_id").
+				Having(sq.Eq{"COUNT(DISTINCT t.id)": len(filters.Tags)})
+		}
+
+		// Squirrel wymaga ręcznego SQL dla podzapytania w IN
+		subSql, subArgs, err := tagSubQ.ToSql()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build tag subquery: %w", err)
+		}
+		base = base.Where(fmt.Sprintf("a.id IN (%s)", subSql), subArgs...)
+	}
+
+	// ==========================================
+	// COUNT (Używamy s.sysDB)
+	// ==========================================
+
+	sqlBase, argsBase, err := base.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build base sql: %w", err)
+	}
+
+	fromIndex := strings.Index(strings.ToUpper(sqlBase), "FROM")
+	if fromIndex == -1 {
+		return nil, fmt.Errorf("invalid sql generated (no FROM clause)")
+	}
+	sqlCount := "SELECT COUNT(*) " + sqlBase[fromIndex:]
+
+	var totalCount int
+	err = s.sysDB.QueryRowContext(context.Background(), sqlCount, argsBase...).Scan(&totalCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count assets: %w", err)
+	}
+
+	// ==========================================
+	// Sortowanie i Paginacja
+	// ==========================================
+
+	sortCol := "a.date_added"
+	switch strings.ToLower(filters.SortOption) {
+	case "filename":
+		sortCol = "a.file_name"
+	case "filesize":
+		sortCol = "a.file_size"
+	case "lastmodified":
+		sortCol = "a.last_modified"
+	case "rating":
+		sortCol = "a.rating"
+	case "dateadded":
+		sortCol = "a.date_added"
+	}
+
+	sortDir := "DESC"
+	if !filters.SortDesc {
+		sortDir = "ASC"
+	}
+	base = base.OrderBy(fmt.Sprintf("%s %s", sortCol, sortDir))
+
+	offset := (filters.Page - 1) * filters.PageSize
+	if offset < 0 {
+		offset = 0
+	}
+	base = base.Limit(uint64(filters.PageSize)).Offset(uint64(offset))
+
+	// ==========================================
+	// Wykonanie i Mapowanie
+	// ==========================================
+
+	finalSQL, finalArgs, err := base.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	// POPRAWKA: Używamy s.sysDB.QueryContext
+	rows, err := s.sysDB.QueryContext(context.Background(), finalSQL, finalArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []AssetDetails
+
+	for rows.Next() {
+		var a AssetDetails
+
+		// Zmienne tymczasowe dla typów nullable
+		var thumbPath sql.NullString
+		var domColor sql.NullString
+		var imgW, imgH sql.NullInt64
+		var hasAlpha sql.NullBool
+		var dateAddedStr string // SQLite TEXT
+		var lastModTime time.Time
+		var groupId sql.NullString
+
+		err := rows.Scan(
+			&a.ID, &a.FileName, &a.FilePath, &a.FileType, &a.FileSize,
+			&thumbPath, &dateAddedStr, &lastModTime,
+			&imgW, &imgH, &domColor,
+			&a.Rating, &a.IsFavorite, &a.IsDeleted, &a.IsHidden, &groupId,
+			&hasAlpha,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Mapowanie wartości
+		if groupId.Valid && groupId.String != "" {
+			val := groupId.String
+			a.GroupID = &val
+		} else {
+			a.GroupID = nil
+		}
+		if thumbPath.Valid {
+			a.ThumbnailPath = thumbPath.String
+		} else {
+			a.ThumbnailPath = ""
+		}
+
+		if domColor.Valid {
+			a.DominantColor = domColor.String
+		} else {
+			a.DominantColor = ""
+		}
+
+		a.LastModified = lastModTime
+
+		if imgW.Valid {
+			a.ImageWidth = imgW.Int64
+		} else {
+			a.ImageWidth = 0
+		}
+
+		if imgH.Valid {
+			a.ImageHeight = imgH.Int64
+		} else {
+			a.ImageHeight = 0
+		}
+
+		a.FileExtension = strings.ToLower(filepath.Ext(a.FileName))
+
+		if groupId.Valid {
+			val := groupId.String
+			a.GroupID = &val
+		}
+
+		// Parsowanie daty
+		if parsedTime, err := time.Parse("2006-01-02 15:04:05", dateAddedStr); err == nil {
+			a.DateAdded = parsedTime
+		} else if parsedTime, err := time.Parse(time.RFC3339, dateAddedStr); err == nil {
+			a.DateAdded = parsedTime
+		} else {
+			a.DateAdded = time.Now()
+		}
+
+		results = append(results, a)
+	}
+
+	if results == nil {
+		results = []AssetDetails{}
+	}
+
+	return &PagedAssetResult{
+		Items:      results,
+		TotalCount: totalCount,
+		Page:       filters.Page,
+		PageSize:   filters.PageSize,
+	}, nil
+}
+
 // GetAssetById pobiera pojedynczy asset wraz z jego tagami i groupID.
 func (s *AssetService) GetAssetById(id int64) (*AssetDetails, error) {
 	ctx := context.Background()
@@ -169,7 +444,7 @@ func (s *AssetService) GetAssetById(id int64) (*AssetDetails, error) {
 		Description:   asset.Description.String,
 		IsDeleted:     asset.IsDeleted,
 		IsHidden:      asset.IsHidden,
-		GroupID:       asset.GroupID,
+		GroupID:       &asset.GroupID,
 		Tags:          tagNames,
 		DominantColor: asset.DominantColor.String,
 	}
