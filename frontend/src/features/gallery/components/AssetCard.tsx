@@ -189,7 +189,7 @@ export const AssetCard = ({
 				radius="lg"
 				className={`group relative h-full w-full border-none bg-black/20 transition-transform hover:scale-[1.02] ${
 					isSelected ? "ring-2 ring-primary" : ""
-				}`}
+				} ${asset.isHidden ? "opacity-60 grayscale-[0.4]" : ""}`}
 				style={style}
 				onMouseEnter={() => setIsHovered(true)}
 				onMouseLeave={() => setIsHovered(false)}
@@ -251,7 +251,9 @@ export const AssetCard = ({
 							size="sm"
 							radius="full"
 							variant="light"
-							className="bg-black/40 text-white backdrop-blur-md hover:bg-black/60"
+							className={`bg-black/40 backdrop-blur-md hover:bg-black/60 ${
+								asset.isHidden ? "text-primary" : "text-white"
+							}`}
 							onPress={() => toggleHidden(!asset.isHidden)}
 						>
 							{asset.isHidden ? <EyeOff size={16} /> : <Eye size={16} />}

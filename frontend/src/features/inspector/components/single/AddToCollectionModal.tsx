@@ -16,6 +16,7 @@ import {
 	type MaterialSetForm,
 	MaterialSetFormModal,
 } from "@/layouts/sidebar/MaterialSetFormModal";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface AddToCollectionModalProps {
 	isOpen: boolean;
@@ -175,28 +176,44 @@ export const AddToCollectionModal = ({
 															</span>
 														</div>
 
-														{isAlreadyAdded ? (
-															<Button
-																size="sm"
-																isIconOnly
-																variant="flat"
-																color="success"
-																className="bg-success/10 text-success cursor-default rounded-full"
-															>
-																<Check size={16} />
-															</Button>
-														) : (
-															<Button
-																size="sm"
-																isIconOnly
-																variant="light"
-																className="text-default-400 hover:text-primary hover:bg-primary/10 rounded-full"
-																onPress={() => handleAdd(set.id)}
-																isLoading={isLoading}
-															>
-																{!isLoading && <Plus size={18} />}
-															</Button>
-														)}
+														<AnimatePresence mode="wait">
+															{isAlreadyAdded ? (
+																<motion.div
+																	key="check"
+																	initial={{ scale: 0.5, opacity: 0 }}
+																	animate={{ scale: 1, opacity: 1 }}
+																	exit={{ scale: 0.5, opacity: 0 }}
+																>
+																	<Button
+																		size="sm"
+																		isIconOnly
+																		variant="flat"
+																		color="primary"
+																		className="bg-primary/10 text-primary cursor-default rounded-full"
+																	>
+																		<Check size={16} />
+																	</Button>
+																</motion.div>
+															) : (
+																<motion.div
+																	key="plus"
+																	initial={{ scale: 0.5, opacity: 0 }}
+																	animate={{ scale: 1, opacity: 1 }}
+																	exit={{ scale: 0.5, opacity: 0 }}
+																>
+																	<Button
+																		size="sm"
+																		isIconOnly
+																		variant="light"
+																		className="text-default-400 hover:text-primary hover:bg-primary/10 rounded-full"
+																		onPress={() => handleAdd(set.id)}
+																		isLoading={isLoading}
+																	>
+																		{!isLoading && <Plus size={18} />}
+																	</Button>
+																</motion.div>
+															)}
+														</AnimatePresence>
 													</div>
 												);
 											})
