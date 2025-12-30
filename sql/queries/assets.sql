@@ -3,9 +3,9 @@ INSERT INTO assets (
     scan_folder_id, file_name, file_path, file_type, file_size,
     thumbnail_path, file_hash,
     image_width, image_height, dominant_color, bit_depth, has_alpha_channel,
-    last_modified, last_scanned,group_id
+    last_modified, last_scanned, group_id
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 RETURNING *;
 
@@ -53,7 +53,7 @@ SET
     rating = COALESCE(sqlc.narg('rating'), rating),
     is_favorite = COALESCE(sqlc.narg('is_favorite'), is_favorite),
     thumbnail_path = COALESCE(sqlc.narg('thumbnail_path'), thumbnail_path)
-WHERE id = ?
+WHERE id = sqlc.arg('id')
 RETURNING *;
 
 -- name: ListAssets :many
@@ -73,6 +73,7 @@ UPDATE assets SET is_hidden = ? WHERE id = ?;
 UPDATE assets
 SET is_hidden = ?
 WHERE scan_folder_id = ?;
+
 -- name: ListFavoriteAssets :many
 SELECT a.* FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
@@ -113,7 +114,7 @@ LIMIT ? OFFSET ?;
 -- name: ListUntaggedAssets :many
 SELECT a.* FROM assets a
 LEFT JOIN asset_tags at ON a.id = at.asset_id
-JOIN scan_folders f ON a.scan_folder_id = f.id -- DODANO JOIN
+JOIN scan_folders f ON a.scan_folder_id = f.id
 WHERE at.tag_id IS NULL
   AND a.is_deleted = 0
   AND f.is_deleted = 0
@@ -160,8 +161,8 @@ DELETE FROM assets WHERE scan_folder_id = ?;
 -- name: GetLibraryStats :one
 SELECT
     COUNT(*) as total_count,
-    COALESCE(SUM(file_size), 0) as total_size,
-    MAX(last_scanned) as last_scan
+    CAST(COALESCE(SUM(file_size), 0) AS INTEGER) as total_size,
+    MAX(a.last_scanned) as last_scan
 FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
 WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND is_hidden = 0;
@@ -177,6 +178,7 @@ SELECT
      WHERE a.is_favorite = 1 AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as favorites_count,
 
     (SELECT COUNT(*) FROM assets WHERE is_deleted = 1 AND is_hidden = 0) as trash_count,
+
     (SELECT COUNT(*) FROM assets WHERE is_hidden = 1 AND is_deleted = 0) as hidden_count,
 
     (SELECT COUNT(DISTINCT a.id)
@@ -210,4 +212,24 @@ FROM assets
 WHERE scan_folder_id = ?
   AND file_name LIKE ?
   AND id != ?
-LIMIT 50;
+LIMIT ?;
+
+-- name: SoftDeleteAssets :exec
+UPDATE assets
+SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP
+WHERE id IN (sqlc.slice('ids'));
+
+-- name: RestoreAssets :exec
+UPDATE assets
+SET is_deleted = 0, deleted_at = NULL
+WHERE id IN (sqlc.slice('ids'));
+
+-- name: GetAssetsByGroupID :many
+SELECT id, file_name, file_path
+FROM assets
+WHERE group_id = ? AND is_deleted = 0;
+
+-- name: UpdateAssetType :exec
+UPDATE assets
+SET file_type = ?
+WHERE id = ?;

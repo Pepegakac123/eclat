@@ -29,6 +29,7 @@ type Dependencies struct {
 	DB              *sql.DB
 	Logger          *slog.Logger
 	App             *app.App
+	AssetService    *app.AssetService
 	ScannerService  *scanner.Scanner
 	SettingsService *settings.SettingsService
 	WatcherService  *watcher.Service
@@ -123,13 +124,15 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 	}
 
 	settingsService := settings.NewSettingsService(queries, programLogger, notifier, watcherService, sharedConfig)
+	assetService := app.NewAssetService(queries, programLogger)
 
-	myApp := app.NewApp(programLogger, scannerService, settingsService, watcherService)
+	myApp := app.NewApp(queries, programLogger, assetService, scannerService, settingsService, watcherService)
 
 	return &Dependencies{
 		DB:              db,
 		Logger:          programLogger,
 		App:             myApp,
+		AssetService:    assetService,
 		ScannerService:  scannerService,
 		SettingsService: settingsService,
 		WatcherService:  watcherService,

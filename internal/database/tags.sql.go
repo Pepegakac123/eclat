@@ -10,7 +10,9 @@ import (
 )
 
 const addTagToAsset = `-- name: AddTagToAsset :exec
-INSERT OR IGNORE INTO asset_tags (asset_id, tag_id) VALUES (?, ?)
+INSERT INTO asset_tags (asset_id, tag_id)
+VALUES (?, ?)
+ON CONFLICT DO NOTHING
 `
 
 type AddTagToAssetParams struct {
@@ -23,17 +25,20 @@ func (q *Queries) AddTagToAsset(ctx context.Context, arg AddTagToAssetParams) er
 	return err
 }
 
-const clearTagsFromAsset = `-- name: ClearTagsFromAsset :exec
-DELETE FROM asset_tags WHERE asset_id = ?
+const clearTagsForAsset = `-- name: ClearTagsForAsset :exec
+DELETE FROM asset_tags
+WHERE asset_id = ?
 `
 
-func (q *Queries) ClearTagsFromAsset(ctx context.Context, assetID int64) error {
-	_, err := q.exec(ctx, q.clearTagsFromAssetStmt, clearTagsFromAsset, assetID)
+func (q *Queries) ClearTagsForAsset(ctx context.Context, assetID int64) error {
+	_, err := q.exec(ctx, q.clearTagsForAssetStmt, clearTagsForAsset, assetID)
 	return err
 }
 
 const createTag = `-- name: CreateTag :one
-INSERT INTO tags (name) VALUES (?) RETURNING id, name, date_created
+INSERT INTO tags (name) VALUES (?)
+ON CONFLICT(name) DO UPDATE SET name=name
+RETURNING id, name, date_created
 `
 
 func (q *Queries) CreateTag(ctx context.Context, name string) (Tag, error) {
@@ -41,6 +46,33 @@ func (q *Queries) CreateTag(ctx context.Context, name string) (Tag, error) {
 	var i Tag
 	err := row.Scan(&i.ID, &i.Name, &i.DateCreated)
 	return i, err
+}
+
+const getAllTags = `-- name: GetAllTags :many
+SELECT id, name, date_created FROM tags ORDER BY name ASC
+`
+
+func (q *Queries) GetAllTags(ctx context.Context) ([]Tag, error) {
+	rows, err := q.query(ctx, q.getAllTagsStmt, getAllTags)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Tag
+	for rows.Next() {
+		var i Tag
+		if err := rows.Scan(&i.ID, &i.Name, &i.DateCreated); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getTagByName = `-- name: GetTagByName :one
@@ -54,15 +86,16 @@ func (q *Queries) GetTagByName(ctx context.Context, name string) (Tag, error) {
 	return i, err
 }
 
-const getTagsForAsset = `-- name: GetTagsForAsset :many
-SELECT t.id, t.name, t.date_created FROM tags t
+const getTagsByAssetID = `-- name: GetTagsByAssetID :many
+SELECT t.id, t.name, t.date_created
+FROM tags t
 JOIN asset_tags at ON t.id = at.tag_id
 WHERE at.asset_id = ?
-ORDER BY t.name
+ORDER BY t.name ASC
 `
 
-func (q *Queries) GetTagsForAsset(ctx context.Context, assetID int64) ([]Tag, error) {
-	rows, err := q.query(ctx, q.getTagsForAssetStmt, getTagsForAsset, assetID)
+func (q *Queries) GetTagsByAssetID(ctx context.Context, assetID int64) ([]Tag, error) {
+	rows, err := q.query(ctx, q.getTagsByAssetIDStmt, getTagsByAssetID, assetID)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +107,37 @@ func (q *Queries) GetTagsForAsset(ctx context.Context, assetID int64) ([]Tag, er
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTagsNamesByAssetID = `-- name: GetTagsNamesByAssetID :many
+SELECT t.name
+FROM tags t
+JOIN asset_tags at ON t.id = at.tag_id
+WHERE at.asset_id = ?
+ORDER BY t.name ASC
+`
+
+func (q *Queries) GetTagsNamesByAssetID(ctx context.Context, assetID int64) ([]string, error) {
+	rows, err := q.query(ctx, q.getTagsNamesByAssetIDStmt, getTagsNamesByAssetID, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -122,7 +186,8 @@ func (q *Queries) ListTags(ctx context.Context) ([]ListTagsRow, error) {
 }
 
 const removeTagFromAsset = `-- name: RemoveTagFromAsset :exec
-DELETE FROM asset_tags WHERE asset_id = ? AND tag_id = ?
+DELETE FROM asset_tags
+WHERE asset_id = ? AND tag_id = ?
 `
 
 type RemoveTagFromAssetParams struct {

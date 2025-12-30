@@ -13,7 +13,7 @@ type Querier interface {
 	AddAssetToMaterialSet(ctx context.Context, arg AddAssetToMaterialSetParams) error
 	AddTagToAsset(ctx context.Context, arg AddTagToAssetParams) error
 	ClaimAssetsForPath(ctx context.Context, arg ClaimAssetsForPathParams) error
-	ClearTagsFromAsset(ctx context.Context, assetID int64) error
+	ClearTagsForAsset(ctx context.Context, assetID int64) error
 	CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset, error)
 	CreateMaterialSet(ctx context.Context, arg CreateMaterialSetParams) (MaterialSet, error)
 	CreateSavedSearch(ctx context.Context, arg CreateSavedSearchParams) (SavedSearch, error)
@@ -25,9 +25,11 @@ type Querier interface {
 	DeleteSavedSearch(ctx context.Context, id int64) error
 	FindPotentialSiblings(ctx context.Context, arg FindPotentialSiblingsParams) ([]FindPotentialSiblingsRow, error)
 	GetAllColors(ctx context.Context) ([]sql.NullString, error)
+	GetAllTags(ctx context.Context) ([]Tag, error)
 	GetAssetByHash(ctx context.Context, fileHash sql.NullString) (Asset, error)
 	GetAssetById(ctx context.Context, id int64) (Asset, error)
 	GetAssetByPath(ctx context.Context, filePath string) (Asset, error)
+	GetAssetsByGroupID(ctx context.Context, groupID string) ([]GetAssetsByGroupIDRow, error)
 	GetLibraryStats(ctx context.Context) (GetLibraryStatsRow, error)
 	GetMaterialSetById(ctx context.Context, id int64) (MaterialSet, error)
 	GetScanFolderById(ctx context.Context, id int64) (ScanFolder, error)
@@ -35,7 +37,8 @@ type Querier interface {
 	GetSidebarStats(ctx context.Context) (GetSidebarStatsRow, error)
 	GetSystemSetting(ctx context.Context, key string) (string, error)
 	GetTagByName(ctx context.Context, name string) (Tag, error)
-	GetTagsForAsset(ctx context.Context, assetID int64) ([]Tag, error)
+	GetTagsByAssetID(ctx context.Context, assetID int64) ([]Tag, error)
+	GetTagsNamesByAssetID(ctx context.Context, assetID int64) ([]string, error)
 	ListAssets(ctx context.Context, arg ListAssetsParams) ([]Asset, error)
 	ListAssetsForCache(ctx context.Context) ([]ListAssetsForCacheRow, error)
 	ListAssetsInMaterialSet(ctx context.Context, arg ListAssetsInMaterialSetParams) ([]Asset, error)
@@ -52,18 +55,21 @@ type Querier interface {
 	RemoveAssetFromMaterialSet(ctx context.Context, arg RemoveAssetFromMaterialSetParams) error
 	RemoveTagFromAsset(ctx context.Context, arg RemoveTagFromAssetParams) error
 	RestoreAsset(ctx context.Context, id int64) error
+	RestoreAssets(ctx context.Context, ids []int64) error
 	RestoreScanFolder(ctx context.Context, id int64) error
 	SetAssetHidden(ctx context.Context, arg SetAssetHiddenParams) error
 	SetAssetRating(ctx context.Context, arg SetAssetRatingParams) error
 	SetAssetsHiddenByFolderId(ctx context.Context, arg SetAssetsHiddenByFolderIdParams) error
 	SetSystemSetting(ctx context.Context, arg SetSystemSettingParams) error
 	SoftDeleteAsset(ctx context.Context, id int64) error
+	SoftDeleteAssets(ctx context.Context, ids []int64) error
 	SoftDeleteScanFolder(ctx context.Context, id int64) error
 	ToggleAssetFavorite(ctx context.Context, id int64) error
 	UpdateAssetFromScan(ctx context.Context, arg UpdateAssetFromScanParams) (Asset, error)
 	UpdateAssetLocation(ctx context.Context, arg UpdateAssetLocationParams) error
 	UpdateAssetMetadata(ctx context.Context, arg UpdateAssetMetadataParams) (Asset, error)
 	UpdateAssetScanStatus(ctx context.Context, arg UpdateAssetScanStatusParams) error
+	UpdateAssetType(ctx context.Context, arg UpdateAssetTypeParams) error
 	UpdateMaterialSet(ctx context.Context, arg UpdateMaterialSetParams) error
 	UpdateScanFolderLastScanned(ctx context.Context, id int64) error
 	UpdateScanFolderStatus(ctx context.Context, arg UpdateScanFolderStatusParams) error

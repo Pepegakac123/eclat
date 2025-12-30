@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"eclat/internal/database"
 	"eclat/internal/scanner"
 	"eclat/internal/settings"
 	"eclat/internal/watcher"
@@ -13,17 +14,21 @@ import (
 // App struct holds the application state and core service dependencies.
 // It serves as the main entry point for the Wails application runtime.
 type App struct {
+	db              database.Querier
 	ctx             context.Context
 	logger          *slog.Logger
+	AssetService    *AssetService
 	Scanner         *scanner.Scanner
 	SettingsService *settings.SettingsService
 	Watcher         *watcher.Service
 }
 
 // NewApp creates a new App application struct with injected dependencies.
-func NewApp(logger *slog.Logger, scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service) *App {
+func NewApp(db database.Querier, logger *slog.Logger, assetService *AssetService, scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service) *App {
 	return &App{
+		db:              db,
 		logger:          logger,
+		AssetService:    assetService,
 		Scanner:         scanner,
 		SettingsService: settingsService,
 		Watcher:         watcher,
@@ -34,6 +39,7 @@ func NewApp(logger *slog.Logger, scanner *scanner.Scanner, settingsService *sett
 // so we can call the runtime methods, and background services are initialized.
 func (a *App) OnStartup(ctx context.Context) {
 	a.ctx = ctx
+	a.AssetService.Startup(ctx)
 	a.Scanner.Startup(ctx)
 	a.SettingsService.Startup(ctx)
 	a.Watcher.Startup(ctx)

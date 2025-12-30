@@ -46,6 +46,7 @@ func main() {
 		OnShutdown:       deps.App.Shutdown,
 		Bind: []interface{}{
 			deps.App,
+			deps.AssetService,
 			deps.ScannerService,
 			deps.SettingsService,
 			deps.WatcherService,

@@ -8,6 +8,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -34,9 +35,9 @@ INSERT INTO assets (
     scan_folder_id, file_name, file_path, file_type, file_size,
     thumbnail_path, file_hash,
     image_width, image_height, dominant_color, bit_depth, has_alpha_channel,
-    last_modified, last_scanned,group_id
+    last_modified, last_scanned, group_id
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 RETURNING id, scan_folder_id, group_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden
 `
@@ -130,13 +131,14 @@ FROM assets
 WHERE scan_folder_id = ?
   AND file_name LIKE ?
   AND id != ?
-LIMIT 50
+LIMIT ?
 `
 
 type FindPotentialSiblingsParams struct {
 	ScanFolderID sql.NullInt64 `json:"scanFolderId"`
 	FileName     string        `json:"fileName"`
 	ID           int64         `json:"id"`
+	Limit        int64         `json:"limit"`
 }
 
 type FindPotentialSiblingsRow struct {
@@ -146,7 +148,12 @@ type FindPotentialSiblingsRow struct {
 }
 
 func (q *Queries) FindPotentialSiblings(ctx context.Context, arg FindPotentialSiblingsParams) ([]FindPotentialSiblingsRow, error) {
-	rows, err := q.query(ctx, q.findPotentialSiblingsStmt, findPotentialSiblings, arg.ScanFolderID, arg.FileName, arg.ID)
+	rows, err := q.query(ctx, q.findPotentialSiblingsStmt, findPotentialSiblings,
+		arg.ScanFolderID,
+		arg.FileName,
+		arg.ID,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -311,11 +318,46 @@ func (q *Queries) GetAssetByPath(ctx context.Context, filePath string) (Asset, e
 	return i, err
 }
 
+const getAssetsByGroupID = `-- name: GetAssetsByGroupID :many
+SELECT id, file_name, file_path
+FROM assets
+WHERE group_id = ? AND is_deleted = 0
+`
+
+type GetAssetsByGroupIDRow struct {
+	ID       int64  `json:"id"`
+	FileName string `json:"fileName"`
+	FilePath string `json:"filePath"`
+}
+
+func (q *Queries) GetAssetsByGroupID(ctx context.Context, groupID string) ([]GetAssetsByGroupIDRow, error) {
+	rows, err := q.query(ctx, q.getAssetsByGroupIDStmt, getAssetsByGroupID, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAssetsByGroupIDRow
+	for rows.Next() {
+		var i GetAssetsByGroupIDRow
+		if err := rows.Scan(&i.ID, &i.FileName, &i.FilePath); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getLibraryStats = `-- name: GetLibraryStats :one
 SELECT
     COUNT(*) as total_count,
-    COALESCE(SUM(file_size), 0) as total_size,
-    MAX(last_scanned) as last_scan
+    CAST(COALESCE(SUM(file_size), 0) AS INTEGER) as total_size,
+    MAX(a.last_scanned) as last_scan
 FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
 WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND is_hidden = 0
@@ -323,7 +365,7 @@ WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND is_hidden = 
 
 type GetLibraryStatsRow struct {
 	TotalCount int64       `json:"totalCount"`
-	TotalSize  interface{} `json:"totalSize"`
+	TotalSize  int64       `json:"totalSize"`
 	LastScan   interface{} `json:"lastScan"`
 }
 
@@ -345,6 +387,7 @@ SELECT
      WHERE a.is_favorite = 1 AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as favorites_count,
 
     (SELECT COUNT(*) FROM assets WHERE is_deleted = 1 AND is_hidden = 0) as trash_count,
+
     (SELECT COUNT(*) FROM assets WHERE is_hidden = 1 AND is_deleted = 0) as hidden_count,
 
     (SELECT COUNT(DISTINCT a.id)
@@ -664,7 +707,7 @@ func (q *Queries) ListHiddenAssets(ctx context.Context, arg ListHiddenAssetsPara
 const listUntaggedAssets = `-- name: ListUntaggedAssets :many
 SELECT a.id, a.scan_folder_id, a.group_id, a.file_name, a.file_path, a.file_type, a.file_size, a.thumbnail_path, a.rating, a.description, a.is_favorite, a.image_width, a.image_height, a.dominant_color, a.bit_depth, a.has_alpha_channel, a.date_added, a.last_scanned, a.last_modified, a.file_hash, a.is_deleted, a.deleted_at, a.is_hidden FROM assets a
 LEFT JOIN asset_tags at ON a.id = at.asset_id
-JOIN scan_folders f ON a.scan_folder_id = f.id -- DODANO JOIN
+JOIN scan_folders f ON a.scan_folder_id = f.id
 WHERE at.tag_id IS NULL
   AND a.is_deleted = 0
   AND f.is_deleted = 0
@@ -795,6 +838,27 @@ func (q *Queries) RestoreAsset(ctx context.Context, id int64) error {
 	return err
 }
 
+const restoreAssets = `-- name: RestoreAssets :exec
+UPDATE assets
+SET is_deleted = 0, deleted_at = NULL
+WHERE id IN (/*SLICE:ids*/?)
+`
+
+func (q *Queries) RestoreAssets(ctx context.Context, ids []int64) error {
+	query := restoreAssets
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	_, err := q.exec(ctx, nil, query, queryParams...)
+	return err
+}
+
 const setAssetHidden = `-- name: SetAssetHidden :exec
 UPDATE assets SET is_hidden = ? WHERE id = ?
 `
@@ -847,6 +911,27 @@ WHERE id = ?
 
 func (q *Queries) SoftDeleteAsset(ctx context.Context, id int64) error {
 	_, err := q.exec(ctx, q.softDeleteAssetStmt, softDeleteAsset, id)
+	return err
+}
+
+const softDeleteAssets = `-- name: SoftDeleteAssets :exec
+UPDATE assets
+SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP
+WHERE id IN (/*SLICE:ids*/?)
+`
+
+func (q *Queries) SoftDeleteAssets(ctx context.Context, ids []int64) error {
+	query := softDeleteAssets
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	_, err := q.exec(ctx, nil, query, queryParams...)
 	return err
 }
 
@@ -973,11 +1058,11 @@ func (q *Queries) UpdateAssetLocation(ctx context.Context, arg UpdateAssetLocati
 const updateAssetMetadata = `-- name: UpdateAssetMetadata :one
 UPDATE assets
 SET
-    description = COALESCE(?2, description),
-    rating = COALESCE(?3, rating),
-    is_favorite = COALESCE(?4, is_favorite),
-    thumbnail_path = COALESCE(?5, thumbnail_path)
-WHERE id = ?
+    description = COALESCE(?1, description),
+    rating = COALESCE(?2, rating),
+    is_favorite = COALESCE(?3, is_favorite),
+    thumbnail_path = COALESCE(?4, thumbnail_path)
+WHERE id = ?5
 RETURNING id, scan_folder_id, group_id, file_name, file_path, file_type, file_size, thumbnail_path, rating, description, is_favorite, image_width, image_height, dominant_color, bit_depth, has_alpha_channel, date_added, last_scanned, last_modified, file_hash, is_deleted, deleted_at, is_hidden
 `
 
@@ -1046,5 +1131,21 @@ func (q *Queries) UpdateAssetScanStatus(ctx context.Context, arg UpdateAssetScan
 		arg.LastModified,
 		arg.ID,
 	)
+	return err
+}
+
+const updateAssetType = `-- name: UpdateAssetType :exec
+UPDATE assets
+SET file_type = ?
+WHERE id = ?
+`
+
+type UpdateAssetTypeParams struct {
+	FileType string `json:"fileType"`
+	ID       int64  `json:"id"`
+}
+
+func (q *Queries) UpdateAssetType(ctx context.Context, arg UpdateAssetTypeParams) error {
+	_, err := q.exec(ctx, q.updateAssetTypeStmt, updateAssetType, arg.FileType, arg.ID)
 	return err
 }
