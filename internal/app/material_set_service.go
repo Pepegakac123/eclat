@@ -4,20 +4,24 @@ import (
 	"context"
 	"database/sql"
 	"eclat/internal/database"
+	"eclat/internal/scanner"
+	"fmt"
 	"log/slog"
 	"time"
 )
 
 type MaterialSetService struct {
-	ctx    context.Context
-	db     database.Querier
-	logger *slog.Logger
+	ctx      context.Context
+	db       database.Querier
+	logger   *slog.Logger
+	thumbGen scanner.ThumbnailGenerator
 }
 
-func NewMaterialSetService(db database.Querier, logger *slog.Logger) *MaterialSetService {
+func NewMaterialSetService(db database.Querier, logger *slog.Logger, thumbGen scanner.ThumbnailGenerator) *MaterialSetService {
 	return &MaterialSetService{
-		db:     db,
-		logger: logger,
+		db:       db,
+		logger:   logger,
+		thumbGen: thumbGen,
 	}
 }
 
@@ -32,6 +36,7 @@ type MaterialSet struct {
 	CoverAssetID   *int64    `json:"coverAssetId"`
 	CustomCoverUrl *string   `json:"customCoverUrl"`
 	CustomColor    *string   `json:"customColor"`
+	ThumbnailPath  string    `json:"thumbnailPath"`
 	DateAdded      time.Time `json:"dateAdded"`
 	LastModified   time.Time `json:"lastModified"`
 	TotalAssets    int64     `json:"totalAssets"`
@@ -74,6 +79,13 @@ func (s *MaterialSetService) GetAll() ([]MaterialSet, error) {
 			coverId = &val
 		}
 
+		thumbPath := ""
+		if customUrl != nil && *customUrl != "" {
+			thumbPath = *customUrl
+		} else if r.CoverThumbnailPath.Valid {
+			thumbPath = r.CoverThumbnailPath.String
+		}
+
 		results = append(results, MaterialSet{
 			ID:             r.ID,
 			Name:           r.Name,
@@ -81,6 +93,7 @@ func (s *MaterialSetService) GetAll() ([]MaterialSet, error) {
 			CoverAssetID:   coverId,
 			CustomCoverUrl: customUrl,
 			CustomColor:    customColor,
+			ThumbnailPath:  thumbPath,
 			DateAdded:      r.DateAdded,
 			LastModified:   r.LastModified,
 			TotalAssets:    r.TotalAssets,
@@ -151,6 +164,37 @@ func (s *MaterialSetService) Update(id int64, req CreateMaterialSetRequest) (*Ma
 	return s.GetById(id)
 }
 
+// SetMaterialSetCoverFromFile sets the custom cover image from a local file path.
+func (s *MaterialSetService) SetMaterialSetCoverFromFile(id int64, filePath string) (*MaterialSet, error) {
+	if s.thumbGen == nil {
+		return nil, fmt.Errorf("thumbnail generator not available")
+	}
+
+	// Generate thumbnail
+	res, err := s.thumbGen.Generate(s.ctx, filePath)
+	if err != nil {
+		s.logger.Error("Failed to generate cover thumbnail", "path", filePath, "error", err)
+		return nil, fmt.Errorf("failed to generate thumbnail: %w", err)
+	}
+
+	// Update DB with the new web path
+	// We only update CustomCoverUrl
+	ms, err := s.GetById(id)
+	if err != nil {
+		return nil, err
+	}
+
+	req := CreateMaterialSetRequest{
+		Name:           ms.Name,
+		Description:    ms.Description,
+		CoverAssetID:   ms.CoverAssetID,
+		CustomCoverUrl: &res.WebPath,
+		CustomColor:    ms.CustomColor,
+	}
+
+	return s.Update(id, req)
+}
+
 // Delete deletes a material set.
 func (s *MaterialSetService) Delete(id int64) error {
 	return s.db.DeleteMaterialSet(s.ctx, id)
@@ -183,6 +227,13 @@ func (s *MaterialSetService) GetById(id int64) (*MaterialSet, error) {
 		coverId = &val
 	}
 
+	thumbPath := ""
+	if customUrl != nil && *customUrl != "" {
+		thumbPath = *customUrl
+	} else if ms.CoverThumbnailPath.Valid {
+		thumbPath = ms.CoverThumbnailPath.String
+	}
+
 	return &MaterialSet{
 		ID:             ms.ID,
 		Name:           ms.Name,
@@ -190,6 +241,7 @@ func (s *MaterialSetService) GetById(id int64) (*MaterialSet, error) {
 		CoverAssetID:   coverId,
 		CustomCoverUrl: customUrl,
 		CustomColor:    customColor,
+		ThumbnailPath:  thumbPath,
 		DateAdded:      ms.DateAdded,
 		LastModified:   ms.LastModified,
 		TotalAssets:    0, // Default to 0 as query doesn't include count

@@ -31,7 +31,7 @@ type Querier interface {
 	GetAssetByPath(ctx context.Context, filePath string) (Asset, error)
 	GetAssetsByGroupID(ctx context.Context, groupID string) ([]GetAssetsByGroupIDRow, error)
 	GetLibraryStats(ctx context.Context) (GetLibraryStatsRow, error)
-	GetMaterialSetById(ctx context.Context, id int64) (MaterialSet, error)
+	GetMaterialSetById(ctx context.Context, id int64) (GetMaterialSetByIdRow, error)
 	GetScanFolderById(ctx context.Context, id int64) (ScanFolder, error)
 	GetScanFolderByPath(ctx context.Context, path string) (ScanFolder, error)
 	GetSidebarStats(ctx context.Context) (GetSidebarStatsRow, error)

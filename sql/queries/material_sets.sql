@@ -1,17 +1,24 @@
 -- name: ListMaterialSets :many
 SELECT
     ms.*,
+    a.thumbnail_path as cover_thumbnail_path,
     (SELECT COUNT(*) FROM asset_material_sets ams WHERE ams.material_set_id = ms.id) as total_assets
 FROM material_sets ms
+LEFT JOIN assets a ON ms.cover_asset_id = a.id
 ORDER BY ms.name;
 
 -- name: GetMaterialSetById :one
-SELECT * FROM material_sets WHERE id = ? LIMIT 1;
+SELECT 
+    ms.*,
+    a.thumbnail_path as cover_thumbnail_path
+FROM material_sets ms 
+LEFT JOIN assets a ON ms.cover_asset_id = a.id
+WHERE ms.id = ? LIMIT 1;
 
 -- name: CreateMaterialSet :one
 INSERT INTO material_sets (
-    name, description, cover_asset_id, custom_cover_url, custom_color
-) VALUES (?, ?, ?, ?, ?)
+    name, description, cover_asset_id, custom_cover_url, custom_color, last_modified
+) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 RETURNING *;
 
 -- name: UpdateMaterialSet :exec

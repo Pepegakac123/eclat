@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "@/config/constants";
+import { AddToCollectionModal } from "@/features/inspector/components/single/AddToCollectionModal";
 import { useAssetActions } from "@/features/inspector/hooks/useAssetActions";
 
 interface AssetCardProps {
@@ -71,6 +72,7 @@ export const AssetCard = ({
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 	const [isRenameOpen, setIsRenameOpen] = useState(false);
+	const [isAddToCollectionOpen, setIsAddToCollectionOpen] = useState(false);
 	const [newName, setNewName] = useState(fileName);
 	const [renameError, setRenameError] = useState("");
 	const [displayThumb, setDisplayThumb] = useState<string>("");
@@ -146,6 +148,8 @@ export const AssetCard = ({
 			setNewName(fileName);
 			setRenameError("");
 			setIsRenameOpen(true);
+		} else if (key === "add-set") {
+			setIsAddToCollectionOpen(true);
 		}
 	};
 
@@ -421,6 +425,13 @@ export const AssetCard = ({
 					)}
 				</ModalContent>
 			</Modal>
+
+			{/* Add to Collection Modal */}
+			<AddToCollectionModal
+				isOpen={isAddToCollectionOpen}
+				onOpenChange={setIsAddToCollectionOpen}
+				asset={asset}
+			/>
 		</>
 	);
 };

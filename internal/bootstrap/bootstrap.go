@@ -127,7 +127,7 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 
 	settingsService := settings.NewSettingsService(queries, programLogger, notifier, watcherService, sharedConfig)
 	assetService := app.NewAssetService(queries, db, programLogger, thumbsFolder)
-	materialSetService := app.NewMaterialSetService(queries, programLogger)
+	materialSetService := app.NewMaterialSetService(queries, programLogger, diskThumbGen)
 
 	myApp := app.NewApp(queries, programLogger, assetService, materialSetService, scannerService, settingsService, watcherService)
 
