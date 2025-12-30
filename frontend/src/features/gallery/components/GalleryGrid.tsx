@@ -2,13 +2,13 @@ import { useParams } from "react-router-dom";
 import { useGalleryStore } from "../stores/useGalleryStore";
 import { AssetCard } from "./AssetCard";
 import { Spinner } from "@heroui/spinner";
-import { BYTES_IN_MB, MAX_MB, UI_CONFIG } from "@/config/constants";
-import { AssetQueryParams } from "@/types/api";
+import { UI_CONFIG } from "@/config/constants";
 import { useEffect, useMemo, useRef } from "react";
 import { useAssets } from "../hooks/useAssets";
 import { useShallow } from "zustand/react/shallow";
 import { useAssetsStats } from "../hooks/useAssetsStats";
 import { NoResults } from "./NoResults";
+import { app } from "../../../../wailsjs/go/models";
 
 type DisplayContentMode =
   keyof typeof UI_CONFIG.GALLERY.AllowedDisplayContentModes;
@@ -49,49 +49,29 @@ export const GalleryGrid = ({ mode }: GalleryGridProps) => {
     })),
   );
 
-  const queryParams: AssetQueryParams = useMemo(() => {
-    return {
-      pageNumber: 1,
+  const assetFilters = useMemo(() => {
+    return new app.AssetQueryFilters({
+      page: 1,
       pageSize: pageSize,
-
-      // --- FILTRY ---
-      fileName: filters.searchQuery || undefined,
-      tags: filters.tags.length > 0 ? filters.tags : undefined,
-      matchAll: filters.matchAllTags,
-
-      fileType: filters.fileTypes.length > 0 ? filters.fileTypes : undefined,
-      dominantColors: filters.colors.length > 0 ? filters.colors : undefined,
-
-      ratingMin: filters.ratingRange[0],
-      ratingMax: filters.ratingRange[1],
-
-      minWidth: filters.widthRange[0] > 0 ? filters.widthRange[0] : undefined,
-      maxWidth:
-        filters.widthRange[1] < UI_CONFIG.GALLERY.FilterOptions.MAX_DIMENSION
-          ? filters.widthRange[1]
-          : undefined,
-      minHeight:
-        filters.heightRange[0] > 0 ? filters.heightRange[0] : undefined,
-      maxHeight:
-        filters.heightRange[1] < UI_CONFIG.GALLERY.FilterOptions.MAX_DIMENSION
-          ? filters.heightRange[1]
-          : undefined,
-      fileSizeMin:
-        filters.fileSizeRange[0] > 0
-          ? filters.fileSizeRange[0] * BYTES_IN_MB
-          : undefined,
-
-      fileSizeMax:
-        filters.fileSizeRange[1] < MAX_MB
-          ? filters.fileSizeRange[1] * BYTES_IN_MB
-          : undefined,
-      dateFrom: filters.dateRange.from || undefined,
-      dateTo: filters.dateRange.to || undefined,
-      hasAlphaChannel: filters.hasAlpha || undefined,
-      sortBy: sortOption,
+      searchQuery: filters.searchQuery || "",
+      tags: filters.tags || [],
+      matchAllTags: filters.matchAllTags,
+      fileTypes: filters.fileTypes || [],
+      colors: filters.colors || [],
+      ratingRange: filters.ratingRange,
+      widthRange: filters.widthRange,
+      heightRange: filters.heightRange,
+      fileSizeRange: filters.fileSizeRange, // Store is MB, Wails expects MB
+      dateRange: filters.dateRange,
+      hasAlpha: filters.hasAlpha === null ? undefined : filters.hasAlpha,
+      onlyFavorites: false, // Override in useAssets based on mode
+      isDeleted: false, // Override in useAssets based on mode
+      isHidden: false,
+      collectionId: parsedCollectionId,
+      sortOption: sortOption,
       sortDesc: sortDesc,
-    };
-  }, [filters, sortOption, sortDesc, pageSize]);
+    });
+  }, [filters, sortOption, sortDesc, pageSize, parsedCollectionId]);
 
   const {
     data,
@@ -102,7 +82,7 @@ export const GalleryGrid = ({ mode }: GalleryGridProps) => {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useAssets(mode, queryParams, parsedCollectionId);
+  } = useAssets(mode, assetFilters);
 
   const handleAssetClick = (e: React.MouseEvent, assetId: number) => {
     // 1. SHIFT CLICK (Range Selection)
@@ -179,7 +159,7 @@ export const GalleryGrid = ({ mode }: GalleryGridProps) => {
       />
     );
   }
-
+  console.log(allAssets[0]);
   return (
     <div className="h-full w-full">
       <div

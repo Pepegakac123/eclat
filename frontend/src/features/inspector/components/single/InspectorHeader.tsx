@@ -11,12 +11,12 @@ import {
   Layers,
   Edit3,
 } from "lucide-react";
-import { Asset } from "@/types/api";
+import { app } from "@wailsjs/go/models";
 import { addToast } from "@heroui/toast";
 import { useAssetMutation } from "../../hooks/useAsset";
 
 interface InspectorHeaderProps {
-  asset: Asset;
+  asset: app.AssetDetails;
 }
 
 export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
@@ -25,7 +25,7 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
 
   useEffect(() => {
     setLocalFileName(asset.fileName);
-  }, [asset.id, asset.fileName]);
+  }, [asset.fileName]);
 
   // --- HANDLERS ---
   const handleSave = () => {

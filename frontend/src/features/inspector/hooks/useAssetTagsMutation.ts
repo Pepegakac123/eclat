@@ -1,18 +1,18 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { assetService } from "@/services/assetService";
+import { UpdateTags } from "@wailsjs/go/app/AssetService";
 import { addToast } from "@heroui/toast";
 
 export const useAssetTagsMutation = (assetId: number) => {
   const queryClient = useQueryClient();
 
   const tagsMutation = useMutation({
-    mutationFn: (newTags: string[]) =>
-      assetService.updateTags(assetId, newTags),
+    mutationFn: (newTags: string[]) => UpdateTags(assetId, newTags),
 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset", assetId] });
       queryClient.invalidateQueries({ queryKey: ["assets"] });
       queryClient.invalidateQueries({ queryKey: ["tags"] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
     },
 
     onError: (error) => {

@@ -105,7 +105,7 @@ export const TopToolbar = () => {
       const path = location.pathname;
 
       if (path.startsWith("/favorites")) count = stats?.totalFavorites;
-      else if (path.startsWith("/trash")) count = stats?.totalTrashed;
+      else if (path.startsWith("/trash")) count = stats?.totalTrash;
       else if (path.startsWith("/uncategorized"))
         count = stats?.totalUncategorized;
       else count = stats?.totalAssets; // Default: All Assets

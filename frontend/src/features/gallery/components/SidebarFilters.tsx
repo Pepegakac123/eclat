@@ -34,8 +34,11 @@ export const SidebarFilters = () => {
   );
   const avaliableColors = useColors();
   const displayColors =
-    (Array.isArray(avaliableColors) ? avaliableColors.filter((c) => c) : []) ||
-    PRESET_COLORS;
+    avaliableColors &&
+    Array.isArray(avaliableColors) &&
+    avaliableColors.length > 0
+      ? avaliableColors.map((c: any) => c.hex) // Cast to any to avoid TS issues if types aren't perfect yet, or import config
+      : PRESET_COLORS;
   const toggleColor = (color: string) => {
     const currentColors = filters.colors || [];
     const newColors = currentColors.includes(color)

@@ -13,6 +13,10 @@ import (
 	"os"
 	"strings"
 
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+
 	"github.com/EdlinOrg/prominentcolor"
 	"github.com/lucasb-eyer/go-colorful"
 )

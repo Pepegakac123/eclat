@@ -4,8 +4,10 @@ import {
   useMutation,
   useInfiniteQuery,
 } from "@tanstack/react-query";
-import { assetService } from "@/services/assetService";
-import { AssetQueryParams } from "@/types/api";
+import { GetAssets } from "../../../../wailsjs/go/app/AssetService";
+import { GetPredefinedPalette } from "../../../../wailsjs/go/scanner/Scanner";
+import { OpenInExplorer } from "../../../../wailsjs/go/app/App";
+import { app } from "../../../../wailsjs/go/models";
 import { UI_CONFIG } from "@/config/constants";
 import { addToast } from "@heroui/toast";
 
@@ -13,45 +15,59 @@ type GalleryMode = keyof typeof UI_CONFIG.GALLERY.AllowedDisplayContentModes;
 
 export const useAssets = (
   mode: GalleryMode,
-  params: AssetQueryParams,
-  collectionId?: number,
+  filters: app.AssetQueryFilters,
 ) => {
   const getAssetsQuery = useInfiniteQuery({
-    queryKey: ["assets", mode, params, collectionId],
+    queryKey: ["assets", mode, filters],
     initialPageParam: 1,
     queryFn: async ({ pageParam = 1 }) => {
-      const currentParams = { ...params, pageNumber: pageParam as number };
+      // Create a copy of filters to avoid mutating the original object
+      const currentFilters = new app.AssetQueryFilters({ ...filters });
+      currentFilters.page = pageParam as number;
+
+      // Apply mode-specific overrides
       switch (mode) {
         case UI_CONFIG.GALLERY.AllowedDisplayContentModes.favorites:
-          return assetService.getFavorites(currentParams);
+          currentFilters.onlyFavorites = true;
+          currentFilters.isDeleted = false;
+          break;
         case UI_CONFIG.GALLERY.AllowedDisplayContentModes.trash:
-          return assetService.getTrashed(currentParams);
+          currentFilters.isDeleted = true;
+          break;
         case UI_CONFIG.GALLERY.AllowedDisplayContentModes.collection:
-          if (!collectionId) throw new Error("Brak ID kolekcji");
-          return assetService.getAssetsForMaterialSet(
-            collectionId,
-            currentParams,
-          );
+          currentFilters.isDeleted = false;
+          break;
         case UI_CONFIG.GALLERY.AllowedDisplayContentModes.uncategorized:
-          return assetService.getUncategorizedAssets(currentParams); // TODO: Dodać filtr uncategorized
+          currentFilters.isDeleted = false;
+          currentFilters.onlyUncategorized = true;
+          break;
         default:
-          return assetService.getAll(currentParams);
+          currentFilters.isDeleted = false;
+          break;
       }
+
+      return GetAssets(currentFilters);
     },
     getNextPageParam: (lastPage) => {
-      if (lastPage.hasNextPage) {
-        return lastPage.currentPage + 1;
+      // Calculate next page based on total count and page size
+      if (
+        lastPage.items &&
+        lastPage.items.length > 0 &&
+        lastPage.page * lastPage.pageSize < lastPage.totalCount
+      ) {
+        return lastPage.page + 1;
       }
       return undefined;
     },
     placeholderData: keepPreviousData,
-    enabled: mode === "collection" ? !!collectionId : true,
     staleTime: 1000 * 60 * 1,
   });
 
   // 2. AKCJA: OTWIERANIE FOLDERU (Mutation)
   const openExplorerMutation = useMutation({
-    mutationFn: (filePath: string) => assetService.openInExplorer(filePath),
+    mutationFn: async (filePath: string) => {
+      return OpenInExplorer(filePath);
+    },
     onSuccess: () => {
       // Opcjonalnie: Toast sukcesu, ale zazwyczaj okno otwiera się po prostu
       console.log("Explorer opened successfully");
@@ -59,8 +75,7 @@ export const useAssets = (
     onError: (error: any) => {
       addToast({
         title: "Błąd Systemu",
-        description:
-          error.response?.data?.message || "Nie udało się otworzyć folderu.",
+        description: "Nie udało się otworzyć folderu.",
         color: "danger",
       });
     },
@@ -71,10 +86,11 @@ export const useAssets = (
     openExplorer: openExplorerMutation.mutate,
   };
 };
+
 export const useColors = () => {
   const colorsQuery = useQuery({
     queryKey: ["colors"],
-    queryFn: assetService.getColorsList,
+    queryFn: GetPredefinedPalette,
   });
 
   return colorsQuery.data;

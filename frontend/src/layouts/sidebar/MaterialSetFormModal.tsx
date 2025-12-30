@@ -12,7 +12,7 @@ import {
   ModalFooter,
 } from "@heroui/modal";
 import { Accordion, AccordionItem } from "@heroui/accordion";
-import { MaterialSet } from "@/types/api";
+import { app } from "@wailsjs/go/models"; // Typ z Wails
 import { PRESET_COLORS } from "@/config/constants";
 
 const formSchema = z.object({
@@ -29,7 +29,7 @@ export type MaterialSetForm = z.infer<typeof formSchema>;
 
 interface MaterialSetFormModalProps {
   mode: "create" | "edit";
-  initialData?: MaterialSet;
+  initialData?: app.MaterialSet;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSubmit: (data: MaterialSetForm, onClose: () => void) => void;
@@ -234,3 +234,4 @@ export const MaterialSetFormModal = ({
     </Modal>
   );
 };
+

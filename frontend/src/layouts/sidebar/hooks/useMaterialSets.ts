@@ -1,6 +1,15 @@
-import { assetService } from "@/services/assetService";
-import { materialSetService } from "@/services/materialSetService";
-import { CreateMaterialSetRequest, MaterialSet } from "@/types/api";
+import {
+  GetAll,
+  Create,
+  Update,
+  Delete,
+  GetById,
+} from "../../../../wailsjs/go/app/MaterialSetService";
+import {
+  AddAssetToMaterialSet,
+  RemoveAssetFromMaterialSet,
+} from "../../../../wailsjs/go/app/AssetService";
+import { app } from "../../../../wailsjs/go/models";
 import { addToast } from "@heroui/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -10,14 +19,14 @@ export const useMaterialSets = () => {
 
   const listQuery = useQuery({
     queryKey: QUERY_KEY,
-    queryFn: materialSetService.getAll,
+    queryFn: GetAll,
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: CreateMaterialSetRequest) =>
-      materialSetService.create(data),
+    mutationFn: (data: app.CreateMaterialSetRequest) => Create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
       addToast({
         title: "Success",
         description: "Material Set created successfully.",
@@ -30,7 +39,7 @@ export const useMaterialSets = () => {
       addToast({
         title: "Creation Failed",
         description:
-          error.response?.data?.message || "Could not create material set.",
+          error.message || "Could not create material set.",
         color: "danger",
         severity: "danger",
         variant: "flat",
@@ -39,10 +48,11 @@ export const useMaterialSets = () => {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: MaterialSet }) =>
-      materialSetService.update(id, data),
+    mutationFn: ({ id, data }: { id: number; data: app.CreateMaterialSetRequest }) =>
+      Update(id, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
       queryClient.invalidateQueries({
         queryKey: [QUERY_KEY, variables.id],
       });
@@ -62,7 +72,7 @@ export const useMaterialSets = () => {
       addToast({
         title: "Update Failed",
         description:
-          error.response?.data?.message || "Could not update material set.",
+          error.message || "Could not update material set.",
         color: "danger",
         severity: "danger",
         variant: "flat",
@@ -71,9 +81,10 @@ export const useMaterialSets = () => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: materialSetService.delete,
+    mutationFn: Delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
       addToast({
         title: "Deleted",
         description: "Material Set has been removed.",
@@ -86,7 +97,7 @@ export const useMaterialSets = () => {
       addToast({
         title: "Delete Failed",
         description:
-          error.response?.data?.message || "Could not delete material set.",
+          error.message || "Could not delete material set.",
         color: "danger",
         severity: "danger",
         variant: "flat",
@@ -95,7 +106,7 @@ export const useMaterialSets = () => {
   });
   const addAssetToSetMutation = useMutation({
     mutationFn: ({ setId, assetId }: { setId: number; assetId: number }) =>
-      assetService.addAssetToMaterialSet(setId, assetId),
+      AddAssetToMaterialSet(setId, assetId),
 
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
@@ -104,19 +115,20 @@ export const useMaterialSets = () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: ["assets"] });
       queryClient.invalidateQueries({ queryKey: ["asset", variables.assetId] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
     },
     onError: (error: any) => {
       addToast({
         title: "Error",
         description:
-          error.response?.data?.message || "Failed to add to collection.",
+          error.message || "Failed to add to collection.",
         color: "danger",
       });
     },
   });
   const removeAssetFromSetMutation = useMutation({
     mutationFn: ({ setId, assetId }: { setId: number; assetId: number }) =>
-      assetService.removeAssetFromMaterialSet(setId, assetId.toString()),
+      RemoveAssetFromMaterialSet(setId, assetId),
 
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
@@ -125,6 +137,7 @@ export const useMaterialSets = () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: ["assets"] });
       queryClient.invalidateQueries({ queryKey: ["asset", variables.assetId] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
 
       addToast({
         title: "Removed",
@@ -166,11 +179,12 @@ export const useMaterialSets = () => {
   };
 };
 
-export const useMaterialSet = (id: string | null | undefined) => {
+export const useMaterialSet = (id: string | number | null | undefined) => {
+  const numericId = typeof id === "string" ? parseInt(id, 10) : id;
   return useQuery({
     queryKey: ["material-set", id],
-    queryFn: () => materialSetService.getById(id!),
-    enabled: !!id,
+    queryFn: () => GetById(numericId!),
+    enabled: !!numericId,
     staleTime: 1000 * 60 * 5,
   });
 };

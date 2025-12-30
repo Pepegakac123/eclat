@@ -235,16 +235,19 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 	for job := range jobs {
 		result := ScanResult{Path: job.Path}
 
-		ext := filepath.Ext(job.Path)
+		ext := strings.ToLower(filepath.Ext(job.Path))
 		if !s.IsExtensionAllowed(ext) {
+			s.logger.Debug("Skipping file: extension not allowed", "path", job.Path, "ext", ext)
 			continue
 		}
+
+		s.logger.Debug("Processing file", "path", job.Path, "ext", ext)
 
 		// Calculate hash to detect duplicates or content changes.
 		// Large files might be skipped (max hash size config).
 		hash, err := CalculateFileHash(job.Path, s.config.GetMaxHashFileSize())
 		if err != nil {
-			s.logger.Warn("Hashing skipped (likely too large)", "path", job.Path, "reason", err)
+			s.logger.Warn("Hashing skipped (likely too large or error)", "path", job.Path, "error", err)
 			hash = ""
 		}
 		var exist database.Asset
@@ -257,6 +260,9 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 		// 2. If path unknown but we have a hash, check if we know the content (Renames/Moves).
 		if lookupErr == sql.ErrNoRows && hash != "" {
 			exist, lookupErr = s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
+			if lookupErr == nil {
+				s.logger.Debug("Found existing asset by hash (Rename/Move detected)", "path", job.Path, "old_path", exist.FilePath)
+			}
 		}
 
 		if lookupErr != nil && lookupErr != sql.ErrNoRows {
@@ -267,12 +273,11 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 		}
 
 		fileType := DetermineFileType(ext)
+		s.logger.Debug("Determined file type", "path", job.Path, "type", fileType)
 
 		if exist.ID > 0 {
-			// We found a matching record (either by path or hash).
 			s.processExistingAsset(ctx, &result, exist, job, fileType, hash)
 		} else {
-			// Totally new file (path unknown, hash unknown).
 			s.processNewAsset(ctx, &result, job, fileType, hash)
 		}
 
@@ -337,21 +342,30 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 
 	// If no match found, this is a completely unique new asset.
 	if !foundMatch {
-		targetGroupID = uuid.New().String()
 		if hash != "" {
 			s.sessionMu.Lock()
-			s.sessionCache[hash] = targetGroupID
+			// Double-check locking pattern: checking if another worker updated the cache
+			// while we were performing heuristic checks.
+			if cached, ok := s.sessionCache[hash]; ok {
+				targetGroupID = cached
+				foundMatch = true
+			} else {
+				targetGroupID = uuid.New().String()
+				s.sessionCache[hash] = targetGroupID
+			}
 			s.sessionMu.Unlock()
+		} else {
+			targetGroupID = uuid.New().String()
 		}
 	}
 
 	newAsset, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash, targetGroupID)
 	if err != nil {
-		s.logger.Warn("Failed to generate metadata for new asset", "path", job.Path, "error", err)
+		s.logger.Error("Critical failure generating metadata for new asset", "path", job.Path, "error", err)
 		result.Err = err
-	} else {
-		result.NewAsset = &newAsset
+		return
 	}
+	result.NewAsset = &newAsset
 }
 
 // processExistingAsset handles the logic for a file that is already present in the database.
@@ -396,6 +410,16 @@ func (s *Scanner) processExistingAsset(ctx context.Context, result *ScanResult, 
 						HasAlphaChannel: meta.HasAlphaChannel,
 					}
 					result.ModifiedAsset = modifiedAsset
+				} else {
+					s.logger.Error("Failed to regenerate metadata for existing asset", "path", job.Path, "error", err)
+					// Fallback: just un-delete if it was resurrected
+					if isResurrected {
+						result.ModifiedAsset = &database.UpdateAssetFromScanParams{
+							ID:          exist.ID,
+							IsDeleted:   sql.NullBool{Bool: false, Valid: true},
+							LastScanned: sql.NullTime{Time: time.Now(), Valid: true},
+						}
+					}
 				}
 			} else if isResurrected {
 				// Resurrected but content seems same (rare but possible if logic changes), just un-delete.
@@ -513,6 +537,9 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+
+	s.logger.Info("Successfully committed batch to DB", "count", len(buffer))
+
 	notifyCtx := ctx
 	if s.ctx != nil {
 		notifyCtx = s.ctx
@@ -526,8 +553,11 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string, targetGroupID string) (database.CreateAssetParams, error) {
 	thumb, err := s.thumbGen.Generate(ctx, path)
 	if err != nil {
-		s.logger.Debug("Failed to generate thumbnail", "path", path, "error", err)
-		return database.CreateAssetParams{}, err
+		s.logger.Warn("Failed to generate thumbnail, proceeding without it", "path", path, "error", err)
+		// We don't return error here, because we still want to add the asset to the DB
+		thumb = ThumbnailResult{
+			WebPath: "/placeholders/generic_placeholder.webp",
+		}
 	}
 	info, err := os.Stat(path)
 	if err != nil {

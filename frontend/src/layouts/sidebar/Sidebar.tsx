@@ -78,7 +78,7 @@ export const Sidebar = () => {
             icon={Trash2}
             label="Trash"
             to="/trash"
-            count={sidebarStats?.totalTrashed || 0}
+            count={sidebarStats?.totalTrash || 0}
           />
         </SidebarSection>
 

@@ -55,6 +55,7 @@ func (s *Scanner) TryHeuristicMatch(ctx context.Context, folderID int64, filenam
 		ScanFolderID: sql.NullInt64{Int64: folderID, Valid: true},
 		FileName:     pattern,
 		ID:           0,
+		Limit:        50,
 	})
 
 	if err != nil {

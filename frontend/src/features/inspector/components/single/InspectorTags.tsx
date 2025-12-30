@@ -2,17 +2,17 @@ import { useState, KeyboardEvent } from "react";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { Tag as TagIcon, Plus } from "lucide-react";
-import { Asset } from "@/types/api";
-import { useAssetTagsMutation } from "../../hooks/useAssetTagsMutatuin";
+import { app } from "@wailsjs/go/models";
+import { useAssetTagsMutation } from "../../hooks/useAssetTagsMutation";
 
 interface InspectorTagsProps {
-  asset: Asset;
+  asset: app.AssetDetails;
 }
 
 export const InspectorTags = ({ asset }: InspectorTagsProps) => {
   const [inputValue, setInputValue] = useState("");
   const { updateTags, isUpdating } = useAssetTagsMutation(asset.id);
-  const currentTagNames = asset.tags.map((t) => t.name);
+  const currentTagNames = asset.tags || [];
 
   // --- HANDLER: DODAWANIE TAGU ---
   const handleAddTag = () => {
@@ -71,11 +71,11 @@ export const InspectorTags = ({ asset }: InspectorTagsProps) => {
 
       {/* CHIPS CLOUD */}
       <div className="flex flex-wrap gap-2 min-h-[2rem] animate-appearance-in">
-        {asset.tags.length > 0 ? (
+        {asset.tags && asset.tags.length > 0 ? (
           asset.tags.map((tag) => (
             <Chip
-              key={tag.id || tag.name}
-              onClose={() => handleRemoveTag(tag.name)}
+              key={tag}
+              onClose={() => handleRemoveTag(tag)}
               variant="flat"
               size="sm"
               className="bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
@@ -85,7 +85,7 @@ export const InspectorTags = ({ asset }: InspectorTagsProps) => {
                 closeButton: "text-primary/60 hover:text-primary",
               }}
             >
-              #{tag.name}
+              #{tag}
             </Chip>
           ))
         ) : (
@@ -99,3 +99,4 @@ export const InspectorTags = ({ asset }: InspectorTagsProps) => {
     </div>
   );
 };
+

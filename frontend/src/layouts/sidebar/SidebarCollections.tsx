@@ -1,12 +1,9 @@
 import { useState } from "react";
 import { SidebarSection } from "./SidebarSection";
-import { SidebarItem } from "./SidebarItem";
 import { useMaterialSets } from "@/layouts/sidebar/hooks/useMaterialSets";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Skeleton } from "@heroui/skeleton";
 import { Button } from "@heroui/button";
-import { Shapes, Pencil, Trash2 } from "lucide-react"; // Nowe ikony
-import { Tooltip } from "@heroui/tooltip";
 import {
   Modal,
   ModalContent,
@@ -15,7 +12,7 @@ import {
   ModalFooter,
   useDisclosure,
 } from "@heroui/modal";
-import { MaterialSet } from "@/types/api"; // Typ z API
+import { app } from "@wailsjs/go/models"; // Typy Wails
 import { MaterialSetFormModal, MaterialSetForm } from "./MaterialSetFormModal"; // Import ujednoliconego Modala
 import { MaterialSetSidebarItem } from "./MaterialSetSidebarItem";
 
@@ -50,7 +47,7 @@ export const SidebarCollections = () => {
     onOpenChange: onDeleteOpenChange,
   } = useDisclosure();
 
-  const [selectedSet, setSelectedSet] = useState<MaterialSet | undefined>(
+  const [selectedSet, setSelectedSet] = useState<app.MaterialSet | undefined>(
     undefined,
   );
 
@@ -62,12 +59,12 @@ export const SidebarCollections = () => {
     onClose: () => void,
   ) => {
     try {
-      const payload = {
-        ...data,
+      const payload = new app.CreateMaterialSetRequest({
+        name: data.name,
         description: data.description || undefined,
         customCoverUrl: data.customCoverUrl || undefined,
         customColor: data.customColor || undefined,
-      };
+      });
 
       await createMaterialSet(payload);
       onClose();
@@ -84,18 +81,16 @@ export const SidebarCollections = () => {
     if (!selectedSet) return;
 
     try {
-      const payload = {
-        ...data,
+      const payload = new app.CreateMaterialSetRequest({
+        name: data.name,
         description: data.description || undefined,
         customCoverUrl: data.customCoverUrl || undefined,
         customColor: data.customColor || undefined,
-      };
+      });
+
       const updatePayload = {
-        id: String(selectedSet.id),
-        data: {
-          ...selectedSet,
-          ...payload,
-        } as MaterialSet,
+        id: selectedSet.id,
+        data: payload,
       };
 
       await updateMaterialSet(updatePayload);
@@ -109,7 +104,7 @@ export const SidebarCollections = () => {
   const handleDeleteConfirm = async (onClose: () => void) => {
     if (!selectedSet) return;
     try {
-      await deleteMaterialSet(String(selectedSet.id));
+      await deleteMaterialSet(selectedSet.id);
       setSelectedSet(undefined);
       onClose();
     } catch (error) {
@@ -119,12 +114,12 @@ export const SidebarCollections = () => {
 
   // --- HANDLERY UI ---
 
-  const handleEditOpen = (set: MaterialSet) => {
+  const handleEditOpen = (set: app.MaterialSet) => {
     setSelectedSet(set);
     onEditOpen();
   };
 
-  const handleDeleteOpen = (set: MaterialSet) => {
+  const handleDeleteOpen = (set: app.MaterialSet) => {
     setSelectedSet(set);
     onDeleteOpen();
   };
@@ -234,3 +229,4 @@ export const SidebarCollections = () => {
     </SidebarSection>
   );
 };
+

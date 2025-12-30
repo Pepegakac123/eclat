@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Card, CardFooter, CardHeader } from "@heroui/card";
 import { Image } from "@heroui/image";
 import { Checkbox } from "@heroui/checkbox";
@@ -21,25 +22,18 @@ import {
   Maximize2,
   HardDrive,
 } from "lucide-react";
-import { useState } from "react";
-import { Asset } from "@/types/api";
-import { AxiosResponse } from "axios";
-import { UseMutateFunction } from "@tanstack/react-query";
 import { useAssetActions } from "@/features/inspector/hooks/useAssetActions";
 import { API_BASE_URL } from "@/config/constants";
+import { app } from "@wailsjs/go/models";
+import { GetThumbnailData } from "@wailsjs/go/app/AssetService";
 
 interface AssetCardProps {
-  asset: Asset;
+  asset: app.AssetDetails;
   isSelected: boolean;
   isBulkMode: boolean;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
-  explorerfn: UseMutateFunction<
-    AxiosResponse<any, any, {}>,
-    any,
-    string,
-    unknown
-  >;
+  explorerfn: (path: string) => void;
   style?: React.CSSProperties;
 }
 
@@ -65,20 +59,38 @@ export const AssetCard = ({
 
   const [isHovered, setIsHovered] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [displayThumb, setDisplayThumb] = useState<string>("");
   const { toggleFavorite } = useAssetActions(asset.id);
-  const getThumbnailUrl = (path: string | null) => {
-    if (!path) return "thumbnails/placeholdery/generic_placeholder.webp";
-    if (path.startsWith("http")) return path;
 
-    const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+  useEffect(() => {
+    const loadThumb = async () => {
+      if (!thumbnailPath) {
+        setDisplayThumb("/placeholders/generic_placeholder.webp");
+        return;
+      }
 
-    return `${API_BASE_URL}/${cleanPath}`;
-  };
+      if (thumbnailPath.startsWith("/placeholders/")) {
+        setDisplayThumb(thumbnailPath);
+        return;
+      }
+
+      // For generated thumbnails, try to use the Go method to bypass Vite dev server issues
+      try {
+        const data = await GetThumbnailData(id);
+        setDisplayThumb(data);
+      } catch (err) {
+        console.error("Failed to load thumbnail via Go", err);
+        setDisplayThumb("/placeholders/generic_placeholder.webp");
+      }
+    };
+
+    loadThumb();
+  }, [thumbnailPath, id]);
 
   const showControls = isHovered || isSelected || isMenuOpen;
   const showCheckbox = isSelected && isBulkMode;
 
-  // Helper icons
+  // ... (rest of the component remains the same, but use displayThumb in Image src)
   const getFileIcon = () => {
     switch (fileType?.toLowerCase()) {
       case "model":
@@ -109,26 +121,19 @@ export const AssetCard = ({
     <Card
       shadow="sm"
       radius="lg"
-      // Usuwamy onClick stąd, bo Karta bywa kapryśna. Przenosimy go do "Click Zone".
       className={`group relative h-full w-full border-none bg-black/20 transition-transform hover:scale-[1.02] ${
         isSelected ? "ring-2 ring-primary" : ""
       }`}
       style={style}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      // Ważne: isPressable={false} domyślnie, traktujemy to jako kontener
     >
-      {/* WARSTWA 1 (GÓRA - Z-30): AKCJE
-          Te elementy muszą być klikalne i leżeć NAJWYŻEJ.
-      */}
+      {/* ... (Header content same as before) ... */}
       <CardHeader className="absolute top-0 z-30 flex w-full justify-between p-2 pointer-events-none">
-        {/* Checkbox Wrapper - pointer-events-auto przywraca klikalność wewnątrz nagłówka */}
         <div
           className={`flex gap-2 transition-opacity duration-200 pointer-events-auto ${
             showCheckbox ? "opacity-100" : "opacity-0"
           }`}
-          // Kliknięcie w checkbox-wrapper ma działać jak klik w kartę (zaznaczenie)
-          // Ale uwaga: Checkbox w środku ma pointer-events-none, więc ten div łapie klik.
           onClick={onClick}
         >
           <Checkbox
@@ -141,14 +146,13 @@ export const AssetCard = ({
           />
         </div>
 
-        {/* Przyciski - pointer-events-auto */}
         <div
           className={`flex gap-1 transition-opacity duration-200 pointer-events-auto ${
             showControls ? "opacity-100" : "opacity-0"
           }`}
           onClick={stopProp}
           onKeyDown={stopProp}
-          onDoubleClick={stopProp} // Zapobiega otwarciu explorera przy szybkim klikaniu w menu
+          onDoubleClick={stopProp}
         >
           <Button
             isIconOnly
@@ -212,29 +216,21 @@ export const AssetCard = ({
         </div>
       </CardHeader>
 
-      {/* WARSTWA 2 (ŚRODEK - Z-20): CLICK ZONE (The Magic Fix 🪄)
-          To jest niewidzialna tafla szkła, która łapie wszystkie kliknięcia w "ciało" karty.
-      */}
       <div
         className="absolute inset-0 z-20 w-full h-full cursor-pointer"
         onClick={onClick}
         onDoubleClick={onDoubleClick}
       />
 
-      {/* WARSTWA 3 (DÓŁ - Z-0/10): CONTENT
-          Elementy wizualne, nie interaktywne.
-      */}
-
       {/* Obrazek - Z-0 */}
       <Image
         removeWrapper
         alt={fileName}
         className="z-0 h-full w-full object-cover pointer-events-none"
-        src={getThumbnailUrl(thumbnailPath ?? "")}
-        fallbackSrc="/thumbnails/placeholdery/generic_placeholder.webp"
+        src={displayThumb}
+        fallbackSrc="/placeholders/generic_placeholder.webp"
       />
 
-      {/* Footer*/}
       <CardFooter className="absolute bottom-0 z-40 w-full justify-between border-t border-white/10 bg-black/60 p-2 backdrop-blur-md pointer-events-none">
         <div className="flex w-full flex-col items-start gap-1">
           <p className="w-full truncate text-tiny font-bold text-white/90 text-left">

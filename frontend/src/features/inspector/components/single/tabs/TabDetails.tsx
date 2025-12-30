@@ -1,4 +1,4 @@
-import { Asset } from "@/types/api";
+import { app } from "@wailsjs/go/models";
 import { Copy } from "lucide-react";
 import { Tooltip } from "@heroui/tooltip";
 import { Button } from "@heroui/button";
@@ -39,7 +39,7 @@ const DetailTile = ({
   </div>
 );
 
-export const TabDetails = ({ asset }: { asset: Asset }) => {
+export const TabDetails = ({ asset }: { asset: app.AssetDetails }) => {
   return (
     <div className="flex flex-col gap-3 p-1">
       <div className="grid grid-cols-2 gap-2">
@@ -118,3 +118,4 @@ export const TabDetails = ({ asset }: { asset: Asset }) => {
     </div>
   );
 };
+

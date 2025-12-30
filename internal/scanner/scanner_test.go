@@ -320,3 +320,69 @@ func TestIntegration_LiveScan_Heuristic(t *testing.T) {
 
 	assert.Equal(t, groupID, v2Asset.GroupID, "Plik v2 powinien odziedziczyć GroupID od v1 dzięki heurystyce nazwy")
 }
+
+func TestScanner_Logic_NonImageFiles(t *testing.T) {
+	_, queries, scanner, root := setupLogicTest(t)
+	ctx := context.Background()
+
+	// IMPORTANT: Allow .blend extension for this test
+	scanner.config.SetAllowedExtensions([]string{".txt", ".png", ".blend"})
+
+	// A. Create a .blend file
+	blendPath := filepath.Join(root, "scene.blend")
+	createDummyFile(t, blendPath)
+
+	// B. Scan it
+	err := scanner.ScanFile(ctx, blendPath)
+	assert.NoError(t, err)
+
+	// C. Verify it exists in DB
+	asset, err := queries.GetAssetByPath(ctx, blendPath)
+	assert.NoError(t, err)
+	assert.Equal(t, blendPath, asset.FilePath)
+	assert.Equal(t, "model", asset.FileType)
+	assert.NotEmpty(t, asset.ThumbnailPath)
+	assert.Contains(t, asset.ThumbnailPath, "blend_placeholder.webp")
+}
+
+func TestScanner_Logic_ThumbnailFailure(t *testing.T) {
+	_, queries, scanner, root := setupLogicTest(t)
+	ctx := context.Background()
+
+	// Configure mock to fail
+	scanner.thumbGen.(*MockThumbnailGenerator).ShouldFail = true
+
+	path := filepath.Join(root, "broken.png")
+	createDummyFile(t, path)
+
+	// Scan it
+	err := scanner.ScanFile(ctx, path)
+	assert.NoError(t, err) // Should NOT return error
+
+	// Verify it exists in DB even if thumbnail failed
+	asset, err := queries.GetAssetByPath(ctx, path)
+	assert.NoError(t, err)
+	assert.Equal(t, path, asset.FilePath)
+	assert.Contains(t, asset.ThumbnailPath, "generic_placeholder.webp")
+}
+
+func TestScanner_Logic_UnknownAllowedExtension(t *testing.T) {
+	_, queries, scanner, root := setupLogicTest(t)
+	ctx := context.Background()
+
+	// Allow an extension we don't have a placeholder for
+	scanner.config.SetAllowedExtensions([]string{".random"})
+
+	path := filepath.Join(root, "file.random")
+	createDummyFile(t, path)
+
+	// Scan it
+	err := scanner.ScanFile(ctx, path)
+	assert.NoError(t, err)
+
+	// Verify it exists in DB
+	asset, err := queries.GetAssetByPath(ctx, path)
+	assert.NoError(t, err)
+	assert.Equal(t, "other", asset.FileType)
+	assert.Contains(t, asset.ThumbnailPath, "generic_placeholder.webp")
+}

@@ -3,6 +3,10 @@ package main
 import (
 	"embed"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"eclat/internal/bootstrap"
 
@@ -33,6 +37,25 @@ func main() {
 		WindowStartState: options.Maximised,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if after, ok := strings.CutPrefix(r.URL.Path, "/thumbnails/"); ok {
+					filename := after
+					fullPath := filepath.Join(deps.ThumbnailsDir, filename)
+					
+					// Check if file exists
+					if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+						deps.Logger.Error("Thumbnail file does not exist", "url", r.URL.Path, "fullPath", fullPath)
+						http.NotFound(w, r)
+						return
+					}
+
+					deps.Logger.Debug("Serving thumbnail", "url", r.URL.Path, "fullPath", fullPath)
+					http.ServeFile(w, r, fullPath)
+					return
+				}
+				deps.Logger.Debug("Asset not found in custom handler", "url", r.URL.Path)
+				http.NotFound(w, r)
+			}),
 		},
 		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true},
 		SingleInstanceLock: &options.SingleInstanceLock{
@@ -46,6 +69,8 @@ func main() {
 		OnShutdown:       deps.App.Shutdown,
 		Bind: []interface{}{
 			deps.App,
+			deps.AssetService,
+			deps.MaterialSetService,
 			deps.ScannerService,
 			deps.SettingsService,
 			deps.WatcherService,

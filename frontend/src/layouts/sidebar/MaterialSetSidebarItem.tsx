@@ -1,13 +1,13 @@
-import { MaterialSet } from "@/types/api";
+import { app } from "@wailsjs/go/models";
 import { Link, useLocation } from "react-router-dom";
 import { Tooltip } from "@heroui/tooltip";
 import { Button } from "@heroui/button";
 import { Shapes, Pencil, Trash2 } from "lucide-react";
 
 interface MaterialSetSidebarItemProps {
-  set: MaterialSet;
-  handleEditOpen: (set: MaterialSet) => void;
-  handleDeleteOpen: (set: MaterialSet) => void;
+  set: app.MaterialSet;
+  handleEditOpen: (set: app.MaterialSet) => void;
+  handleDeleteOpen: (set: app.MaterialSet) => void;
 }
 
 export const MaterialSetSidebarItem = ({

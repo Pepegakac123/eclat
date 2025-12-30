@@ -1,3 +1,343 @@
+export namespace app {
+	
+	export class AssetMaterialSet {
+	    id: number;
+	    name: string;
+	    customColor: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AssetMaterialSet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.customColor = source["customColor"];
+	    }
+	}
+	export class AssetDetails {
+	    id: number;
+	    filePath: string;
+	    fileName: string;
+	    fileType: string;
+	    thumbnailPath: string;
+	    // Go type: time
+	    dateAdded: any;
+	    // Go type: time
+	    lastModified: any;
+	    fileSize: number;
+	    imageWidth: number;
+	    imageHeight: number;
+	    fileExtension: string;
+	    rating: number;
+	    isFavorite: boolean;
+	    description: string;
+	    isDeleted: boolean;
+	    isHidden: boolean;
+	    bitDepth: number;
+	    fileHash: string;
+	    groupId?: string;
+	    tags: string[];
+	    materialSets: AssetMaterialSet[];
+	    dominantColor: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AssetDetails(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.filePath = source["filePath"];
+	        this.fileName = source["fileName"];
+	        this.fileType = source["fileType"];
+	        this.thumbnailPath = source["thumbnailPath"];
+	        this.dateAdded = this.convertValues(source["dateAdded"], null);
+	        this.lastModified = this.convertValues(source["lastModified"], null);
+	        this.fileSize = source["fileSize"];
+	        this.imageWidth = source["imageWidth"];
+	        this.imageHeight = source["imageHeight"];
+	        this.fileExtension = source["fileExtension"];
+	        this.rating = source["rating"];
+	        this.isFavorite = source["isFavorite"];
+	        this.description = source["description"];
+	        this.isDeleted = source["isDeleted"];
+	        this.isHidden = source["isHidden"];
+	        this.bitDepth = source["bitDepth"];
+	        this.fileHash = source["fileHash"];
+	        this.groupId = source["groupId"];
+	        this.tags = source["tags"];
+	        this.materialSets = this.convertValues(source["materialSets"], AssetMaterialSet);
+	        this.dominantColor = source["dominantColor"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class AssetQueryFilters {
+	    page: number;
+	    pageSize: number;
+	    searchQuery: string;
+	    tags: string[];
+	    matchAllTags: boolean;
+	    fileTypes: string[];
+	    colors: string[];
+	    ratingRange: number[];
+	    widthRange: number[];
+	    heightRange: number[];
+	    fileSizeRange: number[];
+	    // Go type: struct { From *string "json:\"from\""; To *string "json:\"to\"" }
+	    dateRange: any;
+	    hasAlpha?: boolean;
+	    onlyFavorites: boolean;
+	    onlyUncategorized: boolean;
+	    isDeleted: boolean;
+	    isHidden: boolean;
+	    collectionId?: number;
+	    sortOption: string;
+	    sortDesc: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AssetQueryFilters(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.searchQuery = source["searchQuery"];
+	        this.tags = source["tags"];
+	        this.matchAllTags = source["matchAllTags"];
+	        this.fileTypes = source["fileTypes"];
+	        this.colors = source["colors"];
+	        this.ratingRange = source["ratingRange"];
+	        this.widthRange = source["widthRange"];
+	        this.heightRange = source["heightRange"];
+	        this.fileSizeRange = source["fileSizeRange"];
+	        this.dateRange = this.convertValues(source["dateRange"], Object);
+	        this.hasAlpha = source["hasAlpha"];
+	        this.onlyFavorites = source["onlyFavorites"];
+	        this.onlyUncategorized = source["onlyUncategorized"];
+	        this.isDeleted = source["isDeleted"];
+	        this.isHidden = source["isHidden"];
+	        this.collectionId = source["collectionId"];
+	        this.sortOption = source["sortOption"];
+	        this.sortDesc = source["sortDesc"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CreateMaterialSetRequest {
+	    name: string;
+	    description?: string;
+	    coverAssetId?: number;
+	    customCoverUrl?: string;
+	    customColor?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateMaterialSetRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.coverAssetId = source["coverAssetId"];
+	        this.customCoverUrl = source["customCoverUrl"];
+	        this.customColor = source["customColor"];
+	    }
+	}
+	export class LibraryStats {
+	    totalAssets: number;
+	    totalSize: number;
+	    // Go type: time
+	    lastScan?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalAssets = source["totalAssets"];
+	        this.totalSize = source["totalSize"];
+	        this.lastScan = this.convertValues(source["lastScan"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MaterialSet {
+	    id: number;
+	    name: string;
+	    description?: string;
+	    coverAssetId?: number;
+	    customCoverUrl?: string;
+	    customColor?: string;
+	    // Go type: time
+	    dateAdded: any;
+	    // Go type: time
+	    lastModified: any;
+	    totalAssets: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MaterialSet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.coverAssetId = source["coverAssetId"];
+	        this.customCoverUrl = source["customCoverUrl"];
+	        this.customColor = source["customColor"];
+	        this.dateAdded = this.convertValues(source["dateAdded"], null);
+	        this.lastModified = this.convertValues(source["lastModified"], null);
+	        this.totalAssets = source["totalAssets"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PagedAssetResult {
+	    items: AssetDetails[];
+	    totalCount: number;
+	    page: number;
+	    pageSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PagedAssetResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], AssetDetails);
+	        this.totalCount = source["totalCount"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SidebarStats {
+	    totalAssets: number;
+	    totalUncategorized: number;
+	    totalFavorites: number;
+	    totalTrash: number;
+	    totalHidden: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SidebarStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalAssets = source["totalAssets"];
+	        this.totalUncategorized = source["totalUncategorized"];
+	        this.totalFavorites = source["totalFavorites"];
+	        this.totalTrash = source["totalTrash"];
+	        this.totalHidden = source["totalHidden"];
+	    }
+	}
+	export class UpdateAssetRequest {
+	    Description?: string;
+	    Rating?: number;
+	    IsFavorite?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateAssetRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Description = source["Description"];
+	        this.Rating = source["Rating"];
+	        this.IsFavorite = source["IsFavorite"];
+	    }
+	}
+
+}
+
 export namespace config {
 	
 	export class PaletteColor {
