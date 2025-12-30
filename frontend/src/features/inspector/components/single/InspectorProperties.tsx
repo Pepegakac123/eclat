@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { Textarea } from "@heroui/input";
 import { Star, FileText } from "lucide-react";
-import { Asset } from "@/types/api";
+import { app } from "@wailsjs/go/models";
 import { useAssetMutation } from "../../hooks/useAsset";
 
 interface InspectorPropertiesProps {
-  asset: Asset;
+  asset: app.AssetDetails;
 }
 
 export const InspectorProperties = ({ asset }: InspectorPropertiesProps) => {
@@ -96,3 +96,4 @@ export const InspectorProperties = ({ asset }: InspectorPropertiesProps) => {
     </div>
   );
 };
+

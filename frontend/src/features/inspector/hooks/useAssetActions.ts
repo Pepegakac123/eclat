@@ -1,6 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { assetService } from "@/services/assetService";
-import { Asset } from "@/types/api";
+import { ToggleAssetFavorite } from "../../../../wailsjs/go/app/AssetService";
+import {
+  OpenInExplorer,
+  OpenInDefaultApp,
+} from "../../../../wailsjs/go/app/App";
+import { app } from "../../../../wailsjs/go/models";
 import { addToast } from "@heroui/toast";
 
 export const useAssetActions = (assetId: number) => {
@@ -8,17 +12,24 @@ export const useAssetActions = (assetId: number) => {
 
   //  TOGGLE FAVORITE
   const favoriteMutation = useMutation({
-    mutationFn: () => assetService.toggleFavorite(assetId),
+    mutationFn: () => ToggleAssetFavorite(assetId),
 
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ["asset", assetId] });
 
-      const previousAsset = queryClient.getQueryData<Asset>(["asset", assetId]);
+      const previousAsset = queryClient.getQueryData<app.AssetDetails>([
+        "asset",
+        assetId,
+      ]);
       if (previousAsset) {
-        queryClient.setQueryData<Asset>(["asset", assetId], {
+        const newAsset = new app.AssetDetails({
           ...previousAsset,
           isFavorite: !previousAsset.isFavorite,
         });
+        queryClient.setQueryData<app.AssetDetails>(
+          ["asset", assetId],
+          newAsset,
+        );
       }
 
       return { previousAsset };
@@ -45,7 +56,7 @@ export const useAssetActions = (assetId: number) => {
 
   // 2. OPEN IN EXPLORER
   const explorerMutation = useMutation({
-    mutationFn: (path: string) => assetService.openInExplorer(path),
+    mutationFn: (path: string) => OpenInExplorer(path),
     onError: () => {
       addToast({
         title: "System Error",
@@ -57,7 +68,7 @@ export const useAssetActions = (assetId: number) => {
 
   // 3. OPEN IN PROGRAM (Default App)
   const programMutation = useMutation({
-    mutationFn: (path: string) => assetService.openInProgram(path),
+    mutationFn: (path: string) => OpenInDefaultApp(path),
     onError: () => {
       addToast({
         title: "System Error",

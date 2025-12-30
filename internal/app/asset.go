@@ -38,6 +38,13 @@ func (s *AssetService) Startup(ctx context.Context) {
 // Data Transfer Objects (DTOs) for Wails
 // ==========================================
 
+// AssetMaterialSet - Uproszczona struktura zestawu dla assetu
+type AssetMaterialSet struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	CustomColor string `json:"customColor"`
+}
+
 // AssetDetails to pełny obiekt assetu zwracany do UI.
 // Odzwierciedla to, co frontend potrzebuje w Inspektorze.
 type AssetDetails struct {
@@ -61,12 +68,14 @@ type AssetDetails struct {
 	Description string `json:"description"`
 	IsDeleted   bool   `json:"isDeleted"`
 	IsHidden    bool   `json:"isHidden"`
+	BitDepth    int64  `json:"bitDepth"` // Added
+	FileHash    string `json:"fileHash"` // Added
 
 	// Relacje
-	GroupID       *string  `json:"groupId"`
-	Tags          []string `json:"tags"`
-	MaterialSets  []string `json:"materialSets"`
-	DominantColor string   `json:"dominantColor"`
+	GroupID       *string            `json:"groupId"`
+	Tags          []string           `json:"tags"`
+	MaterialSets  []AssetMaterialSet `json:"materialSets"`
+	DominantColor string             `json:"dominantColor"`
 }
 type AssetSibling struct {
 	ID       int64  `json:"id"`
@@ -429,7 +438,34 @@ func (s *AssetService) GetAssetById(id int64) (*AssetDetails, error) {
 		return nil, err
 	}
 
-	// 3. Mapowanie
+	// 3. Pobierz Material Sets (RAW SQL dla bezpieczeństwa)
+	// Uwaga: Zakładam, że nazwy tabel są poprawne (material_sets, material_set_assets)
+	var materialSets []AssetMaterialSet
+	msRows, err := s.sysDB.QueryContext(ctx, `
+		SELECT ms.id, ms.name, ms.custom_color
+		FROM material_sets ms
+		JOIN material_set_assets msa ON ms.id = msa.material_set_id
+		WHERE msa.asset_id = ?
+	`, asset.ID)
+
+	if err == nil {
+		defer msRows.Close()
+		for msRows.Next() {
+			var ms AssetMaterialSet
+			var customColor sql.NullString
+			if err := msRows.Scan(&ms.ID, &ms.Name, &customColor); err == nil {
+				if customColor.Valid {
+					ms.CustomColor = customColor.String
+				}
+				materialSets = append(materialSets, ms)
+			}
+		}
+	} else {
+		// Log error but don't fail the whole request
+		s.logger.Error("Failed to fetch material sets", "error", err)
+	}
+
+	// 4. Mapowanie
 	details := &AssetDetails{
 		ID:            asset.ID,
 		FilePath:      asset.FilePath,
@@ -447,6 +483,16 @@ func (s *AssetService) GetAssetById(id int64) (*AssetDetails, error) {
 		GroupID:       &asset.GroupID,
 		Tags:          tagNames,
 		DominantColor: asset.DominantColor.String,
+
+		// New fields
+		BitDepth:     asset.BitDepth.Int64,
+		FileHash:     asset.FileHash.String,
+		MaterialSets: materialSets,
+
+		// Calculated
+		ImageWidth:    asset.ImageWidth.Int64,
+		ImageHeight:   asset.ImageHeight.Int64,
+		FileExtension: strings.ToLower(filepath.Ext(asset.FileName)),
 	}
 
 	return details, nil
@@ -666,5 +712,56 @@ func (s *AssetService) UpdateAssetType(id int64, newType string) error {
 	return s.db.UpdateAssetType(s.ctx, database.UpdateAssetTypeParams{
 		FileType: newType,
 		ID:       id,
+	})
+}
+
+// UpdateTags aktualizuje listę tagów dla assetu.
+func (s *AssetService) UpdateTags(assetId int64, tags []string) error {
+	tx, err := s.sysDB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	qtx := database.New(s.sysDB).WithTx(tx)
+
+	// 1. Clear existing tags
+	if err := qtx.ClearTagsForAsset(s.ctx, assetId); err != nil {
+		return err
+	}
+
+	// 2. Add new tags
+	for _, tagName := range tags {
+		// Ensure tag exists
+		tag, err := qtx.CreateTag(s.ctx, tagName)
+		if err != nil {
+			return err
+		}
+		// Link tag
+		err = qtx.AddTagToAsset(s.ctx, database.AddTagToAssetParams{
+			AssetID: assetId,
+			TagID:   tag.ID,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// AddAssetToMaterialSet dodaje asset do kolekcji.
+func (s *AssetService) AddAssetToMaterialSet(setId int64, assetId int64) error {
+	return s.db.AddAssetToMaterialSet(s.ctx, database.AddAssetToMaterialSetParams{
+		MaterialSetID: setId,
+		AssetID:       assetId,
+	})
+}
+
+// RemoveAssetFromMaterialSet usuwa asset z kolekcji.
+func (s *AssetService) RemoveAssetFromMaterialSet(setId int64, assetId int64) error {
+	return s.db.RemoveAssetFromMaterialSet(s.ctx, database.RemoveAssetFromMaterialSetParams{
+		MaterialSetID: setId,
+		AssetID:       assetId,
 	})
 }

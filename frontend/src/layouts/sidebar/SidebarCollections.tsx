@@ -109,7 +109,7 @@ export const SidebarCollections = () => {
   const handleDeleteConfirm = async (onClose: () => void) => {
     if (!selectedSet) return;
     try {
-      await deleteMaterialSet(String(selectedSet.id));
+      await deleteMaterialSet(selectedSet.id);
       setSelectedSet(undefined);
       onClose();
     } catch (error) {

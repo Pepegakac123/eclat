@@ -18,24 +18,26 @@ import (
 // App struct holds the application state and core service dependencies.
 // It serves as the main entry point for the Wails application runtime.
 type App struct {
-	db              database.Querier
-	ctx             context.Context
-	logger          *slog.Logger
-	AssetService    *AssetService
-	Scanner         *scanner.Scanner
-	SettingsService *settings.SettingsService
-	Watcher         *watcher.Service
+	db                 database.Querier
+	ctx                context.Context
+	logger             *slog.Logger
+	AssetService       *AssetService
+	MaterialSetService *MaterialSetService
+	Scanner            *scanner.Scanner
+	SettingsService    *settings.SettingsService
+	Watcher            *watcher.Service
 }
 
 // NewApp creates a new App application struct with injected dependencies.
-func NewApp(db database.Querier, logger *slog.Logger, assetService *AssetService, scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service) *App {
+func NewApp(db database.Querier, logger *slog.Logger, assetService *AssetService, materialSetService *MaterialSetService, scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service) *App {
 	return &App{
-		db:              db,
-		logger:          logger,
-		AssetService:    assetService,
-		Scanner:         scanner,
-		SettingsService: settingsService,
-		Watcher:         watcher,
+		db:                 db,
+		logger:             logger,
+		AssetService:       assetService,
+		MaterialSetService: materialSetService,
+		Scanner:            scanner,
+		SettingsService:    settingsService,
+		Watcher:            watcher,
 	}
 }
 
@@ -44,6 +46,7 @@ func NewApp(db database.Querier, logger *slog.Logger, assetService *AssetService
 func (a *App) OnStartup(ctx context.Context) {
 	a.ctx = ctx
 	a.AssetService.Startup(ctx)
+	a.MaterialSetService.Startup(ctx)
 	a.Scanner.Startup(ctx)
 	a.SettingsService.Startup(ctx)
 	a.Watcher.Startup(ctx)

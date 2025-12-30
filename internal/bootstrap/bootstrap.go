@@ -26,13 +26,14 @@ import (
 
 // Dependencies holds all the initialized services and resources required by the application.
 type Dependencies struct {
-	DB              *sql.DB
-	Logger          *slog.Logger
-	App             *app.App
-	AssetService    *app.AssetService
-	ScannerService  *scanner.Scanner
-	SettingsService *settings.SettingsService
-	WatcherService  *watcher.Service
+	DB                 *sql.DB
+	Logger             *slog.Logger
+	App                *app.App
+	AssetService       *app.AssetService
+	MaterialSetService *app.MaterialSetService
+	ScannerService     *scanner.Scanner
+	SettingsService    *settings.SettingsService
+	WatcherService     *watcher.Service
 }
 
 // Initialize performs the startup sequence: configuring directories, logger, database, and services.
@@ -125,16 +126,18 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 
 	settingsService := settings.NewSettingsService(queries, programLogger, notifier, watcherService, sharedConfig)
 	assetService := app.NewAssetService(queries, db, programLogger)
+	materialSetService := app.NewMaterialSetService(queries, programLogger)
 
-	myApp := app.NewApp(queries, programLogger, assetService, scannerService, settingsService, watcherService)
+	myApp := app.NewApp(queries, programLogger, assetService, materialSetService, scannerService, settingsService, watcherService)
 
 	return &Dependencies{
-		DB:              db,
-		Logger:          programLogger,
-		App:             myApp,
-		AssetService:    assetService,
-		ScannerService:  scannerService,
-		SettingsService: settingsService,
-		WatcherService:  watcherService,
+		DB:                 db,
+		Logger:             programLogger,
+		App:                myApp,
+		AssetService:       assetService,
+		MaterialSetService: materialSetService,
+		ScannerService:     scannerService,
+		SettingsService:    settingsService,
+		WatcherService:     watcherService,
 	}, nil
 }

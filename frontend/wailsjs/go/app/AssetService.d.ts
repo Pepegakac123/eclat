@@ -3,6 +3,8 @@
 import {app} from '../models';
 import {context} from '../models';
 
+export function AddAssetToMaterialSet(arg1:number,arg2:number):Promise<void>;
+
 export function DeleteAssetsPermanently(arg1:Array<number>):Promise<void>;
 
 export function GetAssetById(arg1:number):Promise<app.AssetDetails>;
@@ -14,6 +16,8 @@ export function GetAssets(arg1:app.AssetQueryFilters):Promise<app.PagedAssetResu
 export function GetLibraryStats():Promise<app.LibraryStats>;
 
 export function GetSidebarStats():Promise<app.SidebarStats>;
+
+export function RemoveAssetFromMaterialSet(arg1:number,arg2:number):Promise<void>;
 
 export function RestoreAssets(arg1:Array<number>):Promise<void>;
 
@@ -30,3 +34,5 @@ export function ToggleAssetFavorite(arg1:number):Promise<void>;
 export function UpdateAssetMetadata(arg1:number,arg2:app.UpdateAssetRequest):Promise<app.AssetDetails>;
 
 export function UpdateAssetType(arg1:number,arg2:string):Promise<void>;
+
+export function UpdateTags(arg1:number,arg2:Array<string>):Promise<void>;

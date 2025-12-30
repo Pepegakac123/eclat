@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Tabs, Tab } from "@heroui/tabs";
-import { Asset } from "@/types/api";
+import { app } from "@wailsjs/go/models";
 import { TabDetails } from "./tabs/TabDetails";
 import { TabCollections } from "./tabs/TabCollections";
 import { TabVersions } from "./tabs/TabVersions";
 
-export const InspectorTabs = ({ asset }: { asset: Asset }) => {
+export const InspectorTabs = ({ asset }: { asset: app.AssetDetails }) => {
   const [selected, setSelected] = useState("details");
 
   return (
@@ -39,3 +39,4 @@ export const InspectorTabs = ({ asset }: { asset: Asset }) => {
     </div>
   );
 };
+

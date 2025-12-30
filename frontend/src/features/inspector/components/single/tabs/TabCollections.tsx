@@ -1,10 +1,10 @@
 import { Button } from "@heroui/button";
 import { FolderOpen, X, PlusCircle, Shapes } from "lucide-react";
 import { Tooltip } from "@heroui/tooltip";
-import { Asset } from "@/types/api";
+import { app } from "@wailsjs/go/models";
 import { useMaterialSets } from "@/layouts/sidebar/hooks/useMaterialSets"; // <-- IMPORT Z SIDEBARA
 
-export const TabCollections = ({ asset }: { asset: Asset }) => {
+export const TabCollections = ({ asset }: { asset: app.AssetDetails }) => {
   const { removeAssetFromSet } = useMaterialSets();
 
   const collections = asset.materialSets || [];
@@ -58,3 +58,4 @@ export const TabCollections = ({ asset }: { asset: Asset }) => {
     </div>
   );
 };
+

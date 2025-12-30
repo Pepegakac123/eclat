@@ -2,12 +2,12 @@ import { useState } from "react"; // Dodaj useState
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import { Heart, FolderOpen, ExternalLink, PlusCircle } from "lucide-react";
-import { Asset } from "@/types/api";
+import { app } from "@wailsjs/go/models";
 import { useAssetActions } from "../../hooks/useAssetActions";
 import { AddToCollectionModal } from "./AddToCollectionModal";
 
 interface InspectorFooterProps {
-  asset: Asset;
+  asset: app.AssetDetails;
 }
 
 export const InspectorFooter = ({ asset }: InspectorFooterProps) => {
@@ -92,3 +92,4 @@ export const InspectorFooter = ({ asset }: InspectorFooterProps) => {
     </>
   );
 };
+

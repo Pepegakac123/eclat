@@ -47,6 +47,7 @@ func main() {
 		Bind: []interface{}{
 			deps.App,
 			deps.AssetService,
+			deps.MaterialSetService,
 			deps.ScannerService,
 			deps.SettingsService,
 			deps.WatcherService,

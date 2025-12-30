@@ -1,5 +1,21 @@
 export namespace app {
 	
+	export class AssetMaterialSet {
+	    id: number;
+	    name: string;
+	    customColor: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AssetMaterialSet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.customColor = source["customColor"];
+	    }
+	}
 	export class AssetDetails {
 	    id: number;
 	    filePath: string;
@@ -19,9 +35,11 @@ export namespace app {
 	    description: string;
 	    isDeleted: boolean;
 	    isHidden: boolean;
+	    bitDepth: number;
+	    fileHash: string;
 	    groupId?: string;
 	    tags: string[];
-	    materialSets: string[];
+	    materialSets: AssetMaterialSet[];
 	    dominantColor: string;
 	
 	    static createFrom(source: any = {}) {
@@ -46,9 +64,11 @@ export namespace app {
 	        this.description = source["description"];
 	        this.isDeleted = source["isDeleted"];
 	        this.isHidden = source["isHidden"];
+	        this.bitDepth = source["bitDepth"];
+	        this.fileHash = source["fileHash"];
 	        this.groupId = source["groupId"];
 	        this.tags = source["tags"];
-	        this.materialSets = source["materialSets"];
+	        this.materialSets = this.convertValues(source["materialSets"], AssetMaterialSet);
 	        this.dominantColor = source["dominantColor"];
 	    }
 	
@@ -70,6 +90,7 @@ export namespace app {
 		    return a;
 		}
 	}
+	
 	export class AssetQueryFilters {
 	    page: number;
 	    pageSize: number;
@@ -137,6 +158,26 @@ export namespace app {
 		    return a;
 		}
 	}
+	export class CreateMaterialSetRequest {
+	    name: string;
+	    description?: string;
+	    coverAssetId?: number;
+	    customCoverUrl?: string;
+	    customColor?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateMaterialSetRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.coverAssetId = source["coverAssetId"];
+	        this.customCoverUrl = source["customCoverUrl"];
+	        this.customColor = source["customColor"];
+	    }
+	}
 	export class LibraryStats {
 	    totalAssets: number;
 	    totalSize: number;
@@ -152,6 +193,54 @@ export namespace app {
 	        this.totalAssets = source["totalAssets"];
 	        this.totalSize = source["totalSize"];
 	        this.lastScan = this.convertValues(source["lastScan"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MaterialSet {
+	    id: number;
+	    name: string;
+	    description?: string;
+	    coverAssetId?: number;
+	    customCoverUrl?: string;
+	    customColor?: string;
+	    // Go type: time
+	    dateAdded: any;
+	    // Go type: time
+	    lastModified: any;
+	    totalAssets: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MaterialSet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.coverAssetId = source["coverAssetId"];
+	        this.customCoverUrl = source["customCoverUrl"];
+	        this.customColor = source["customColor"];
+	        this.dateAdded = this.convertValues(source["dateAdded"], null);
+	        this.lastModified = this.convertValues(source["lastModified"], null);
+	        this.totalAssets = source["totalAssets"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

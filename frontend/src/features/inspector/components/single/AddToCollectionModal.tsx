@@ -10,7 +10,8 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Search, Plus, Check, Shapes, FolderPlus } from "lucide-react";
-import { Asset, MaterialSet } from "@/types/api"; // Upewnij się, że masz import MaterialSet
+import { MaterialSet } from "@/types/api"; // Upewnij się, że masz import MaterialSet
+import { app } from "@wailsjs/go/models";
 import { useMaterialSets } from "@/layouts/sidebar/hooks/useMaterialSets";
 import {
   MaterialSetForm,
@@ -20,7 +21,7 @@ import {
 interface AddToCollectionModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  asset: Asset;
+  asset: app.AssetDetails;
 }
 
 export const AddToCollectionModal = ({
@@ -226,3 +227,4 @@ export const AddToCollectionModal = ({
     </>
   );
 };
+

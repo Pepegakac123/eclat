@@ -22,24 +22,17 @@ import {
   HardDrive,
 } from "lucide-react";
 import { useState } from "react";
-import { Asset } from "@/types/api";
-import { AxiosResponse } from "axios";
-import { UseMutateFunction } from "@tanstack/react-query";
 import { useAssetActions } from "@/features/inspector/hooks/useAssetActions";
 import { API_BASE_URL } from "@/config/constants";
+import { app } from "@wailsjs/go/models";
 
 interface AssetCardProps {
-  asset: Asset;
+  asset: app.AssetDetails;
   isSelected: boolean;
   isBulkMode: boolean;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
-  explorerfn: UseMutateFunction<
-    AxiosResponse<any, any, {}>,
-    any,
-    string,
-    unknown
-  >;
+  explorerfn: (path: string) => void;
   style?: React.CSSProperties;
 }
 
