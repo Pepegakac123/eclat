@@ -170,7 +170,7 @@ func (s *MaterialSetService) SetMaterialSetCoverFromFile(id int64, filePath stri
 		return nil, fmt.Errorf("thumbnail generator not available")
 	}
 
-	// Generate thumbnail
+	// Generate thumb1nail
 	res, err := s.thumbGen.Generate(s.ctx, filePath)
 	if err != nil {
 		s.logger.Error("Failed to generate cover thumbnail", "path", filePath, "error", err)
