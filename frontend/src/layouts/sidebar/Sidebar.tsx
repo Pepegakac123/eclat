@@ -46,7 +46,7 @@ export const Sidebar = () => {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20">
             <Layers size={20} />
           </div>
-          <span className="text-foreground text-lg">
+          <span className="text-foreground text-xl font-extrabold tracking-tight">
             Eclat
           </span>
         </div>
