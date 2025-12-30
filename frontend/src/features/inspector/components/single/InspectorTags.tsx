@@ -16,15 +16,23 @@ export const InspectorTags = ({ asset }: InspectorTagsProps) => {
 
   // --- HANDLER: DODAWANIE TAGU ---
   const handleAddTag = () => {
-    const trimmedInput = inputValue.trim().toLowerCase();
+    // Rozdziel po przecinku, wyczyść spacje i przefiltruj puste
+    const newTags = inputValue
+      .split(",")
+      .map((t) => t.trim().toLowerCase())
+      .filter((t) => t !== "");
 
-    if (!trimmedInput) return;
-    if (currentTagNames.includes(trimmedInput)) {
+    if (newTags.length === 0) return;
+
+    // Filtrujemy tylko te, których jeszcze nie ma
+    const uniqueNewTags = newTags.filter((t) => !currentTagNames.includes(t));
+
+    if (uniqueNewTags.length === 0) {
       setInputValue("");
       return;
     }
 
-    const newTagsList = [...currentTagNames, trimmedInput];
+    const newTagsList = [...currentTagNames, ...uniqueNewTags];
     updateTags(newTagsList);
     setInputValue("");
   };
