@@ -61,7 +61,7 @@ export const InspectorTags = ({ asset }: InspectorTagsProps) => {
       </div>
 
       <Input
-        placeholder="Add tag..."
+        placeholder="Add tags (comma-separated)..."
         value={inputValue}
         onValueChange={setInputValue}
         onKeyDown={handleKeyDown}
