@@ -16,46 +16,6 @@ import (
 	sq "github.com/Masterminds/squirrel"
 )
 
-// ... (existing code)
-
-// GetThumbnailData returns the thumbnail image as a base64 data URL.
-// This is a workaround for issues serving dynamic assets via Wails Handler in some Dev environments.
-func (s *AssetService) GetThumbnailData(assetId int64) (string, error) {
-	asset, err := s.db.GetAssetById(context.Background(), assetId)
-	if err != nil {
-		return "", err
-	}
-
-	if asset.ThumbnailPath == "" {
-		return "", errors.New("no thumbnail path")
-	}
-
-	// If it's a placeholder, we return the path as is (frontend will handle it)
-	if strings.HasPrefix(asset.ThumbnailPath, "/placeholders/") {
-		return asset.ThumbnailPath, nil
-	}
-
-	// Resolve absolute path
-	filename := filepath.Base(asset.ThumbnailPath)
-	fullPath := filepath.Join(s.thumbnailsDir, filename)
-
-	data, err := os.ReadFile(fullPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read thumbnail: %w", err)
-	}
-
-	// Determine MIME type (usually webp)
-	mimeType := "image/webp"
-	if strings.HasSuffix(strings.ToLower(filename), ".png") {
-		mimeType = "image/png"
-	} else if strings.HasSuffix(strings.ToLower(filename), ".jpg") || strings.HasSuffix(strings.ToLower(filename), ".jpeg") {
-		mimeType = "image/jpeg"
-	}
-
-	encoded := base64.StdEncoding.EncodeToString(data)
-	return fmt.Sprintf("data:%s;base64,%s", mimeType, encoded), nil
-}
-
 // AssetService - Serwis (Zaktualizowany o sysDB)
 type AssetService struct {
 	ctx           context.Context
@@ -92,8 +52,8 @@ func (s *AssetService) MigrateThumbnailPaths() error {
 
 	// Pobierz wszystkie assety z potencjalnie błędnymi ścieżkami
 	rows, err := s.sysDB.QueryContext(ctx, `
-		SELECT id, thumbnail_path FROM assets 
-		WHERE thumbnail_path LIKE '/%' 
+		SELECT id, thumbnail_path FROM assets
+		WHERE thumbnail_path LIKE '/%'
 		AND thumbnail_path NOT LIKE '/thumbnails/%'
 		AND thumbnail_path NOT LIKE '/placeholders/%'
 	`)
@@ -219,12 +179,12 @@ type AssetQueryFilters struct {
 		To   *string `json:"to"`
 	} `json:"dateRange"`
 
-	HasAlpha      *bool  `json:"hasAlpha"`
-	OnlyFavorites bool   `json:"onlyFavorites"`
-	OnlyUncategorized bool `json:"onlyUncategorized"`
-	IsDeleted     bool   `json:"isDeleted"`
-	IsHidden      bool   `json:"isHidden"`
-	CollectionID  *int64 `json:"collectionId"`
+	HasAlpha          *bool  `json:"hasAlpha"`
+	OnlyFavorites     bool   `json:"onlyFavorites"`
+	OnlyUncategorized bool   `json:"onlyUncategorized"`
+	IsDeleted         bool   `json:"isDeleted"`
+	IsHidden          bool   `json:"isHidden"`
+	CollectionID      *int64 `json:"collectionId"`
 
 	SortOption string `json:"sortOption"`
 	SortDesc   bool   `json:"sortDesc"`
@@ -596,8 +556,8 @@ func (s *AssetService) GetAssetById(id int64) (*AssetDetails, error) {
 	// 3. Pobierz Material Sets (RAW SQL dla bezpieczeństwa)
 	// Uwaga: Zakładam, że nazwy tabel są poprawne (material_sets, material_set_assets)
 	var materialSets []AssetMaterialSet
-		msRows, err := s.sysDB.QueryContext(ctx, `
-			SELECT ms.id, ms.name, ms.custom_color 
+	msRows, err := s.sysDB.QueryContext(ctx, `
+			SELECT ms.id, ms.name, ms.custom_color
 			FROM material_sets ms
 			JOIN asset_material_sets msa ON ms.id = msa.material_set_id
 			WHERE msa.asset_id = ?
@@ -806,13 +766,98 @@ func (s *AssetService) RestoreAssets(ids []int64) error {
 
 // DeleteAssetsPermanently usuwa assety z bazy na zawsze.
 func (s *AssetService) DeleteAssetsPermanently(ids []int64) error {
-	// TODO: Tutaj powinieneś też usunąć plik z dysku fizycznego, jeśli taka jest wola usera!
-	// Na razie tylko baza.
 	for _, id := range ids {
+		// 1. Pobierz dane assetu, aby poznać ścieżkę pliku
+		asset, err := s.db.GetAssetById(s.ctx, id)
+		if err != nil {
+			s.logger.Error("Failed to get asset for deletion", "id", id, "error", err)
+			return fmt.Errorf("failed to retrieve asset %d: %w", id, err)
+		}
+
+		// 2. Usuń plik z dysku
+		if err := os.Remove(asset.FilePath); err != nil && !os.IsNotExist(err) {
+			s.logger.Error("Failed to delete file from disk", "path", asset.FilePath, "error", err)
+			return fmt.Errorf("failed to delete file %s: %w", asset.FilePath, err)
+		}
+
+		// 3. Usuń miniaturkę, jeśli istnieje i jest wygenerowana (nie jest placeholderem)
+		if asset.ThumbnailPath != "" && strings.HasPrefix(asset.ThumbnailPath, "/thumbnails/") {
+			thumbName := filepath.Base(asset.ThumbnailPath)
+			thumbFullPath := filepath.Join(s.thumbnailsDir, thumbName)
+			if err := os.Remove(thumbFullPath); err != nil && !os.IsNotExist(err) {
+				s.logger.Warn("Failed to delete thumbnail", "path", thumbFullPath, "error", err)
+			}
+		}
+
+		// 4. Usuń wpis z bazy danych
 		if err := s.db.DeleteAssetPermanent(s.ctx, id); err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+// RenameAsset zmienia nazwę pliku na dysku i w bazie danych.
+func (s *AssetService) RenameAsset(id int64, newName string) error {
+	// 1. Walidacja nowej nazwy (prosta)
+	if newName == "" {
+		return errors.New("new name cannot be empty")
+	}
+	if strings.ContainsAny(newName, `/\:*?"<>|`) {
+		return errors.New("invalid characters in filename")
+	}
+
+	// 2. Pobierz asset
+	asset, err := s.db.GetAssetById(s.ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to get asset: %w", err)
+	}
+
+	originalExt := filepath.Ext(asset.FileName)
+	// Upewnij się, że nowa nazwa ma to samo rozszerzenie
+	if !strings.HasSuffix(strings.ToLower(newName), strings.ToLower(originalExt)) {
+		// Jeśli użytkownik usunął rozszerzenie, dodaj je z powrotem
+		// Jeśli zmienił na inne - to też zostanie nadpisane oryginalnym (lub dodane)
+		// Przyjmijmy strategię: jeśli nie ma suffixu, dodajemy.
+		newName = newName + originalExt
+	} else {
+        // Case sensitive check? Windows is case insensitive, Linux sensitive.
+        // Let's force the original extension case if possible, or just accept what user gave if it matches.
+        // For safety, let's reconstruct the name with original extension to be sure.
+        baseName := newName[:len(newName)-len(originalExt)]
+        newName = baseName + originalExt
+    }
+
+	// 3. Przygotuj ścieżki
+	dir := filepath.Dir(asset.FilePath)
+	newPath := filepath.Join(dir, newName)
+
+	// 4. Sprawdź czy plik docelowy istnieje
+	if _, err := os.Stat(newPath); err == nil {
+		return errors.New("file with this name already exists")
+	}
+
+	// 5. Zmień nazwę pliku na dysku
+	if err := os.Rename(asset.FilePath, newPath); err != nil {
+		return fmt.Errorf("failed to rename file on disk: %w", err)
+	}
+
+	// 6. Zaktualizuj bazę danych
+	// Nie zmieniamy miniatury, bo jej nazwa jest generowana dynamicznie/haszowana i nie zależy od nazwy pliku (według instrukcji).
+
+	params := database.RenameAssetParams{
+		FileName: newName,
+		FilePath: newPath,
+		ID:       id,
+	}
+
+	_, err = s.db.RenameAsset(s.ctx, params)
+	if err != nil {
+		// Rollback rename on disk?
+		// _ = os.Rename(newPath, asset.FilePath)
+		return fmt.Errorf("failed to update asset in db: %w", err)
+	}
+
 	return nil
 }
 
@@ -918,4 +963,42 @@ func (s *AssetService) RemoveAssetFromMaterialSet(setId int64, assetId int64) er
 		MaterialSetID: setId,
 		AssetID:       assetId,
 	})
+}
+
+// GetThumbnailData returns the thumbnail image as a base64 data URL.
+// This is a workaround for issues serving dynamic assets via Wails Handler in some Dev environments.
+func (s *AssetService) GetThumbnailData(assetId int64) (string, error) {
+	asset, err := s.db.GetAssetById(context.Background(), assetId)
+	if err != nil {
+		return "", err
+	}
+
+	if asset.ThumbnailPath == "" {
+		return "", errors.New("no thumbnail path")
+	}
+
+	// If it's a placeholder, we return the path as is (frontend will handle it)
+	if strings.HasPrefix(asset.ThumbnailPath, "/placeholders/") {
+		return asset.ThumbnailPath, nil
+	}
+
+	// Resolve absolute path
+	filename := filepath.Base(asset.ThumbnailPath)
+	fullPath := filepath.Join(s.thumbnailsDir, filename)
+
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read thumbnail: %w", err)
+	}
+
+	// Determine MIME type (usually webp)
+	mimeType := "image/webp"
+	if strings.HasSuffix(strings.ToLower(filename), ".png") {
+		mimeType = "image/png"
+	} else if strings.HasSuffix(strings.ToLower(filename), ".jpg") || strings.HasSuffix(strings.ToLower(filename), ".jpeg") {
+		mimeType = "image/jpeg"
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(data)
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, encoded), nil
 }

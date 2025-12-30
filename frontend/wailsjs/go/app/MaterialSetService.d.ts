@@ -11,6 +11,8 @@ export function GetAll():Promise<Array<app.MaterialSet>>;
 
 export function GetById(arg1:number):Promise<app.MaterialSet>;
 
+export function SetMaterialSetCoverFromFile(arg1:number,arg2:string):Promise<app.MaterialSet>;
+
 export function Startup(arg1:context.Context):Promise<void>;
 
 export function Update(arg1:number,arg2:app.CreateMaterialSetRequest):Promise<app.MaterialSet>;

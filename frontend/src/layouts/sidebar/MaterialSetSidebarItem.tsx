@@ -1,8 +1,9 @@
-import { app } from "@wailsjs/go/models";
-import { Link, useLocation } from "react-router-dom";
-import { Tooltip } from "@heroui/tooltip";
 import { Button } from "@heroui/button";
-import { Shapes, Pencil, Trash2 } from "lucide-react";
+import { Image } from "@heroui/image";
+import { Tooltip } from "@heroui/tooltip";
+import type { app } from "@wailsjs/go/models";
+import { Pencil, Shapes, Trash2 } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 
 interface MaterialSetSidebarItemProps {
   set: app.MaterialSet;
@@ -62,6 +63,7 @@ export const MaterialSetSidebarItem = ({
             className={`flex-shrink-0 ${iconColorClass}`}
             style={iconStyle}
           />
+
           <span
             className={`flex-1 truncate text-sm transition-colors pr-8 ${
               isActive ? "text-foreground font-medium" : "text-default-600"

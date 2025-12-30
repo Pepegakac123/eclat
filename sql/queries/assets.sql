@@ -229,6 +229,12 @@ SELECT id, file_name, file_path
 FROM assets
 WHERE group_id = ? AND is_deleted = 0;
 
+-- name: RenameAsset :one
+UPDATE assets
+SET file_name = ?, file_path = ?
+WHERE id = ?
+RETURNING *;
+
 -- name: UpdateAssetType :exec
 UPDATE assets
 SET file_type = ?

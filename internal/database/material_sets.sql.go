@@ -27,8 +27,8 @@ func (q *Queries) AddAssetToMaterialSet(ctx context.Context, arg AddAssetToMater
 
 const createMaterialSet = `-- name: CreateMaterialSet :one
 INSERT INTO material_sets (
-    name, description, cover_asset_id, custom_cover_url, custom_color
-) VALUES (?, ?, ?, ?, ?)
+    name, description, cover_asset_id, custom_cover_url, custom_color, last_modified
+) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 RETURNING id, name, description, cover_asset_id, custom_cover_url, custom_color, date_added, last_modified
 `
 
@@ -72,12 +72,29 @@ func (q *Queries) DeleteMaterialSet(ctx context.Context, id int64) error {
 }
 
 const getMaterialSetById = `-- name: GetMaterialSetById :one
-SELECT id, name, description, cover_asset_id, custom_cover_url, custom_color, date_added, last_modified FROM material_sets WHERE id = ? LIMIT 1
+SELECT 
+    ms.id, ms.name, ms.description, ms.cover_asset_id, ms.custom_cover_url, ms.custom_color, ms.date_added, ms.last_modified,
+    a.thumbnail_path as cover_thumbnail_path
+FROM material_sets ms 
+LEFT JOIN assets a ON ms.cover_asset_id = a.id
+WHERE ms.id = ? LIMIT 1
 `
 
-func (q *Queries) GetMaterialSetById(ctx context.Context, id int64) (MaterialSet, error) {
+type GetMaterialSetByIdRow struct {
+	ID                 int64          `json:"id"`
+	Name               string         `json:"name"`
+	Description        sql.NullString `json:"description"`
+	CoverAssetID       sql.NullInt64  `json:"coverAssetId"`
+	CustomCoverUrl     sql.NullString `json:"customCoverUrl"`
+	CustomColor        sql.NullString `json:"customColor"`
+	DateAdded          time.Time      `json:"dateAdded"`
+	LastModified       time.Time      `json:"lastModified"`
+	CoverThumbnailPath sql.NullString `json:"coverThumbnailPath"`
+}
+
+func (q *Queries) GetMaterialSetById(ctx context.Context, id int64) (GetMaterialSetByIdRow, error) {
 	row := q.queryRow(ctx, q.getMaterialSetByIdStmt, getMaterialSetById, id)
-	var i MaterialSet
+	var i GetMaterialSetByIdRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -87,6 +104,7 @@ func (q *Queries) GetMaterialSetById(ctx context.Context, id int64) (MaterialSet
 		&i.CustomColor,
 		&i.DateAdded,
 		&i.LastModified,
+		&i.CoverThumbnailPath,
 	)
 	return i, err
 }
@@ -155,21 +173,24 @@ func (q *Queries) ListAssetsInMaterialSet(ctx context.Context, arg ListAssetsInM
 const listMaterialSets = `-- name: ListMaterialSets :many
 SELECT
     ms.id, ms.name, ms.description, ms.cover_asset_id, ms.custom_cover_url, ms.custom_color, ms.date_added, ms.last_modified,
+    a.thumbnail_path as cover_thumbnail_path,
     (SELECT COUNT(*) FROM asset_material_sets ams WHERE ams.material_set_id = ms.id) as total_assets
 FROM material_sets ms
+LEFT JOIN assets a ON ms.cover_asset_id = a.id
 ORDER BY ms.name
 `
 
 type ListMaterialSetsRow struct {
-	ID             int64          `json:"id"`
-	Name           string         `json:"name"`
-	Description    sql.NullString `json:"description"`
-	CoverAssetID   sql.NullInt64  `json:"coverAssetId"`
-	CustomCoverUrl sql.NullString `json:"customCoverUrl"`
-	CustomColor    sql.NullString `json:"customColor"`
-	DateAdded      time.Time      `json:"dateAdded"`
-	LastModified   time.Time      `json:"lastModified"`
-	TotalAssets    int64          `json:"totalAssets"`
+	ID                 int64          `json:"id"`
+	Name               string         `json:"name"`
+	Description        sql.NullString `json:"description"`
+	CoverAssetID       sql.NullInt64  `json:"coverAssetId"`
+	CustomCoverUrl     sql.NullString `json:"customCoverUrl"`
+	CustomColor        sql.NullString `json:"customColor"`
+	DateAdded          time.Time      `json:"dateAdded"`
+	LastModified       time.Time      `json:"lastModified"`
+	CoverThumbnailPath sql.NullString `json:"coverThumbnailPath"`
+	TotalAssets        int64          `json:"totalAssets"`
 }
 
 func (q *Queries) ListMaterialSets(ctx context.Context) ([]ListMaterialSetsRow, error) {
@@ -190,6 +211,7 @@ func (q *Queries) ListMaterialSets(ctx context.Context) ([]ListMaterialSetsRow, 
 			&i.CustomColor,
 			&i.DateAdded,
 			&i.LastModified,
+			&i.CoverThumbnailPath,
 			&i.TotalAssets,
 		); err != nil {
 			return nil, err

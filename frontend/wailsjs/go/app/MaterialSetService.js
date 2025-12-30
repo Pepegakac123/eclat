@@ -18,6 +18,10 @@ export function GetById(arg1) {
   return window['go']['app']['MaterialSetService']['GetById'](arg1);
 }
 
+export function SetMaterialSetCoverFromFile(arg1, arg2) {
+  return window['go']['app']['MaterialSetService']['SetMaterialSetCoverFromFile'](arg1, arg2);
+}
+
 export function Startup(arg1) {
   return window['go']['app']['MaterialSetService']['Startup'](arg1);
 }

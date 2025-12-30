@@ -222,6 +222,7 @@ export namespace app {
 	    coverAssetId?: number;
 	    customCoverUrl?: string;
 	    customColor?: string;
+	    thumbnailPath: string;
 	    // Go type: time
 	    dateAdded: any;
 	    // Go type: time
@@ -240,6 +241,7 @@ export namespace app {
 	        this.coverAssetId = source["coverAssetId"];
 	        this.customCoverUrl = source["customCoverUrl"];
 	        this.customColor = source["customColor"];
+	        this.thumbnailPath = source["thumbnailPath"];
 	        this.dateAdded = this.convertValues(source["dateAdded"], null);
 	        this.lastModified = this.convertValues(source["lastModified"], null);
 	        this.totalAssets = source["totalAssets"];
