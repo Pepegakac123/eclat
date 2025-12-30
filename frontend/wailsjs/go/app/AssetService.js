@@ -22,6 +22,10 @@ export function GetAssets(arg1) {
   return window['go']['app']['AssetService']['GetAssets'](arg1);
 }
 
+export function GetAvailableColors() {
+  return window['go']['app']['AssetService']['GetAvailableColors']();
+}
+
 export function GetLibraryStats() {
   return window['go']['app']['AssetService']['GetLibraryStats']();
 }

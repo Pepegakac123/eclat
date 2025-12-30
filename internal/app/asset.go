@@ -247,7 +247,9 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 
 	// Filtrowanie Podstawowe
 	base = base.Where(sq.Eq{"a.is_deleted": filters.IsDeleted})
-	base = base.Where(sq.Eq{"a.is_hidden": filters.IsHidden})
+	if !filters.IsDeleted {
+		base = base.Where(sq.Eq{"a.is_hidden": filters.IsHidden})
+	}
 
 	if filters.OnlyFavorites {
 		base = base.Where(sq.Eq{"a.is_favorite": 1})
@@ -859,6 +861,22 @@ func (s *AssetService) RenameAsset(id int64, newName string) error {
 	}
 
 	return nil
+}
+
+// GetAvailableColors zwraca listę wszystkich unikalnych kolorów dominujących z bazy danych.
+func (s *AssetService) GetAvailableColors() ([]string, error) {
+	nullColors, err := s.db.GetAllColors(s.ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var colors []string
+	for _, c := range nullColors {
+		if c.Valid && c.String != "" {
+			colors = append(colors, c.String)
+		}
+	}
+	return colors, nil
 }
 
 // GetAssetVersions zwraca wszystkie assety należące do tej samej grupy co podany ID.

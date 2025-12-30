@@ -633,7 +633,7 @@ func (s *Scanner) scanDirectory(scanCtx context.Context, folder database.ScanFol
 // It handles new files, modifications, and deletions.
 func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 	s.logger.Info("⚡ Live Scan triggered", "path", path)
-
+	s.notifier.SendScannerStatus(s.ctx, feedback.Scanning)
 	ext := filepath.Ext(path)
 	if !s.IsExtensionAllowed(ext) {
 		return nil
@@ -732,9 +732,8 @@ func (s *Scanner) ListenToWatcher(events <-chan string) {
 		err := s.ScanFile(ctx, path)
 		if err != nil {
 			s.logger.Error("Live scan failed", "path", path, "error", err)
-		} else {
-			s.notifier.SendScannerStatus(s.ctx, feedback.Scanning)
 		}
+		s.notifier.SendScannerStatus(s.ctx, feedback.Idle)
 	}
 }
 

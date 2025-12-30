@@ -7,7 +7,7 @@ import {
   Heart,
   Box,
   Shapes,
-  Trash2, // Import ikony kosza
+  EyeOff,
 } from "lucide-react";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarItem } from "./SidebarItem";
@@ -75,10 +75,10 @@ export const Sidebar = () => {
             count={sidebarStats?.totalUncategorized || 0}
           />
           <SidebarItem
-            icon={Trash2}
-            label="Trash"
-            to="/trash"
-            count={sidebarStats?.totalTrash || 0}
+            icon={EyeOff}
+            label="Hidden"
+            to="/hidden"
+            count={sidebarStats?.totalHidden || 0}
           />
         </SidebarSection>
 

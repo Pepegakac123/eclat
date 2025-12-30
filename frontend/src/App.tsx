@@ -41,6 +41,14 @@ function App() {
 					}
 				/>
 				<Route
+					path="/hidden"
+					element={
+						<GalleryGrid
+							mode={UI_CONFIG.GALLERY.AllowedDisplayContentModes.hidden}
+						/>
+					}
+				/>
+				<Route
 					path="/collections/:collectionId"
 					element={
 						<GalleryGrid

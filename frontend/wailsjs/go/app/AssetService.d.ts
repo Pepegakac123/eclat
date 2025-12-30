@@ -13,6 +13,8 @@ export function GetAssetVersions(arg1:number):Promise<Array<app.AssetDetails>>;
 
 export function GetAssets(arg1:app.AssetQueryFilters):Promise<app.PagedAssetResult>;
 
+export function GetAvailableColors():Promise<Array<string>>;
+
 export function GetLibraryStats():Promise<app.LibraryStats>;
 
 export function GetSidebarStats():Promise<app.SidebarStats>;

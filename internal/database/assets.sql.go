@@ -380,11 +380,11 @@ const getSidebarStats = `-- name: GetSidebarStats :one
 SELECT
     (SELECT COUNT(*) FROM assets a
      JOIN scan_folders f ON a.scan_folder_id = f.id
-     WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as all_count,
+     WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND a.is_hidden = 0) as all_count,
 
     (SELECT COUNT(*) FROM assets a
      JOIN scan_folders f ON a.scan_folder_id = f.id
-     WHERE a.is_favorite = 1 AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as favorites_count,
+     WHERE a.is_favorite = 1 AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND a.is_hidden = 0) as favorites_count,
 
     (SELECT COUNT(*) FROM assets WHERE is_deleted = 1 AND is_hidden = 0) as trash_count,
 
@@ -394,7 +394,7 @@ SELECT
      FROM assets a
      LEFT JOIN asset_tags at ON a.id = at.asset_id
      JOIN scan_folders f ON a.scan_folder_id = f.id
-     WHERE at.tag_id IS NULL AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1) as uncategorized_count
+     WHERE at.tag_id IS NULL AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND a.is_hidden = 0) as uncategorized_count
 `
 
 type GetSidebarStatsRow struct {
@@ -949,7 +949,7 @@ func (q *Queries) SetAssetsHiddenByFolderId(ctx context.Context, arg SetAssetsHi
 
 const softDeleteAsset = `-- name: SoftDeleteAsset :exec
 UPDATE assets
-SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP
+SET is_deleted = 1, is_hidden = 0, deleted_at = CURRENT_TIMESTAMP
 WHERE id = ?
 `
 
@@ -960,7 +960,7 @@ func (q *Queries) SoftDeleteAsset(ctx context.Context, id int64) error {
 
 const softDeleteAssets = `-- name: SoftDeleteAssets :exec
 UPDATE assets
-SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP
+SET is_deleted = 1, is_hidden = 0, deleted_at = CURRENT_TIMESTAMP
 WHERE id IN (/*SLICE:ids*/?)
 `
 
