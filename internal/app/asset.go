@@ -63,20 +63,45 @@ type AssetSibling struct {
 	FileName string `json:"fileName"`
 }
 
-// AssetQueryFilters definiuje kryteria wyszukiwania.
+// AssetQueryFilters odzwierciedla obiekt filtrów z useGalleryStore.ts
 type AssetQueryFilters struct {
-	Page          int      `json:"page"`
-	PageSize      int      `json:"pageSize"`
-	Query         string   `json:"query"`
-	Tags          []string `json:"tags"`
-	FileTypes     []string `json:"fileTypes"`
-	Colors        []string `json:"colors"`
-	RatingMin     int      `json:"ratingMin"`
-	OnlyFavorites bool     `json:"onlyFavorites"`
-	SortBy        string   `json:"sortBy"`
-	SortDir       string   `json:"sortDir"`
-	IsDeleted     bool     `json:"isDeleted"`
-	IsHidden      bool     `json:"isHidden"` // Nowy filtr
+	// Paginacja
+	Page     int `json:"page"`
+	PageSize int `json:"pageSize"`
+
+	// Wyszukiwanie i Tagi
+	Query        string   `json:"searchQuery"`
+	Tags         []string `json:"tags"`
+	MatchAllTags bool     `json:"matchAllTags"`
+
+	// Listy
+	FileTypes []string `json:"fileTypes"`
+	Colors    []string `json:"colors"`
+
+	// Zakresy (Ranges)
+	RatingRange   []int `json:"ratingRange"`   // [min, max]
+	WidthRange    []int `json:"widthRange"`    // [min, max]
+	HeightRange   []int `json:"heightRange"`   // [min, max]
+	FileSizeRange []int `json:"fileSizeRange"` // [min, max] w MB
+
+	// Data
+	DateRange struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"dateRange"`
+
+	// Specjalne
+	HasAlpha      *bool `json:"hasAlpha"` // null = wszystkie, true = z alpha, false = bez
+	OnlyFavorites bool  `json:"onlyFavorites"`
+
+	// Kontekst
+	IsDeleted    bool   `json:"isDeleted"`
+	IsHidden     bool   `json:"isHidden"`
+	CollectionID *int64 `json:"collectionId"`
+
+	// Sortowanie
+	SortOption string `json:"sortOption"` // "dateadded", "filename", "filesize", "lastmodified", "rating"
+	SortDesc   bool   `json:"sortDesc"`
 }
 
 // PagedAssetResult to wynik paginacji dla wirtualnej listy.

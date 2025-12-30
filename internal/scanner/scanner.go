@@ -337,11 +337,20 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 
 	// If no match found, this is a completely unique new asset.
 	if !foundMatch {
-		targetGroupID = uuid.New().String()
 		if hash != "" {
 			s.sessionMu.Lock()
-			s.sessionCache[hash] = targetGroupID
+			// Double-check locking pattern: checking if another worker updated the cache
+			// while we were performing heuristic checks.
+			if cached, ok := s.sessionCache[hash]; ok {
+				targetGroupID = cached
+				foundMatch = true
+			} else {
+				targetGroupID = uuid.New().String()
+				s.sessionCache[hash] = targetGroupID
+			}
 			s.sessionMu.Unlock()
+		} else {
+			targetGroupID = uuid.New().String()
 		}
 	}
 
