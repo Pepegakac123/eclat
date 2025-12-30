@@ -32,6 +32,78 @@ func NewAssetService(db database.Querier, sysDB *sql.DB, logger *slog.Logger) *A
 
 func (s *AssetService) Startup(ctx context.Context) {
 	s.ctx = ctx
+	// Migracja ścieżek miniaturek przy starcie
+	go func() {
+		err := s.MigrateThumbnailPaths()
+		if err != nil {
+			s.logger.Error("Failed to migrate thumbnail paths", "error", err)
+		}
+	}()
+}
+
+// MigrateThumbnailPaths konwertuje bezwzględne ścieżki systemowe na ścieżki relatywne /thumbnails/
+func (s *AssetService) MigrateThumbnailPaths() error {
+	ctx := context.Background()
+	s.logger.Info("Starting thumbnail path migration...")
+
+	// Pobierz wszystkie assety z potencjalnie błędnymi ścieżkami
+	rows, err := s.sysDB.QueryContext(ctx, `
+		SELECT id, thumbnail_path FROM assets 
+		WHERE thumbnail_path LIKE '/%' 
+		AND thumbnail_path NOT LIKE '/thumbnails/%'
+		AND thumbnail_path NOT LIKE '/placeholders/%'
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type update struct {
+		id   int64
+		path string
+	}
+	var updates []update
+
+	for rows.Next() {
+		var id int64
+		var oldPath string
+		if err := rows.Scan(&id, &oldPath); err != nil {
+			continue
+		}
+
+		// Wyciągnij samą nazwę pliku
+		filename := filepath.Base(oldPath)
+		newPath := "/thumbnails/" + filename
+		updates = append(updates, update{id, newPath})
+	}
+
+	if len(updates) == 0 {
+		s.logger.Info("No thumbnails need migration")
+		return nil
+	}
+
+	s.logger.Info("Migrating thumbnails", "count", len(updates))
+
+	tx, err := s.sysDB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, "UPDATE assets SET thumbnail_path = ? WHERE id = ?")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, u := range updates {
+		_, err := stmt.ExecContext(ctx, u.path, u.id)
+		if err != nil {
+			s.logger.Error("Failed to update thumbnail path", "id", u.id, "error", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // ==========================================
@@ -441,13 +513,12 @@ func (s *AssetService) GetAssetById(id int64) (*AssetDetails, error) {
 	// 3. Pobierz Material Sets (RAW SQL dla bezpieczeństwa)
 	// Uwaga: Zakładam, że nazwy tabel są poprawne (material_sets, material_set_assets)
 	var materialSets []AssetMaterialSet
-	msRows, err := s.sysDB.QueryContext(ctx, `
-		SELECT ms.id, ms.name, ms.custom_color
-		FROM material_sets ms
-		JOIN material_set_assets msa ON ms.id = msa.material_set_id
-		WHERE msa.asset_id = ?
-	`, asset.ID)
-
+		msRows, err := s.sysDB.QueryContext(ctx, `
+			SELECT ms.id, ms.name, ms.custom_color 
+			FROM material_sets ms
+			JOIN asset_material_sets msa ON ms.id = msa.material_set_id
+			WHERE msa.asset_id = ?
+		`, asset.ID)
 	if err == nil {
 		defer msRows.Close()
 		for msRows.Next() {

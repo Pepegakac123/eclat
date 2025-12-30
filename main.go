@@ -3,6 +3,9 @@ package main
 import (
 	"embed"
 	"log"
+	"net/http"
+	"path/filepath"
+	"strings"
 
 	"eclat/internal/bootstrap"
 
@@ -33,6 +36,15 @@ func main() {
 		WindowStartState: options.Maximised,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/thumbnails/") {
+					filename := strings.TrimPrefix(r.URL.Path, "/thumbnails/")
+					fullPath := filepath.Join(deps.ThumbnailsDir, filename)
+					http.ServeFile(w, r, fullPath)
+					return
+				}
+				http.NotFound(w, r)
+			}),
 		},
 		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true},
 		SingleInstanceLock: &options.SingleInstanceLock{

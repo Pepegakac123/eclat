@@ -12,6 +12,7 @@ export const useAssetTagsMutation = (assetId: number) => {
       queryClient.invalidateQueries({ queryKey: ["asset", assetId] });
       queryClient.invalidateQueries({ queryKey: ["assets"] });
       queryClient.invalidateQueries({ queryKey: ["tags"] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
     },
 
     onError: (error) => {

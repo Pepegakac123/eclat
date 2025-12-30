@@ -34,6 +34,7 @@ type Dependencies struct {
 	ScannerService     *scanner.Scanner
 	SettingsService    *settings.SettingsService
 	WatcherService     *watcher.Service
+	ThumbnailsDir      string
 }
 
 // Initialize performs the startup sequence: configuring directories, logger, database, and services.
@@ -139,5 +140,6 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 		ScannerService:     scannerService,
 		SettingsService:    settingsService,
 		WatcherService:     watcherService,
+		ThumbnailsDir:      thumbsFolder,
 	}, nil
 }

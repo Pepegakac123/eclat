@@ -320,3 +320,27 @@ func TestIntegration_LiveScan_Heuristic(t *testing.T) {
 
 	assert.Equal(t, groupID, v2Asset.GroupID, "Plik v2 powinien odziedziczyć GroupID od v1 dzięki heurystyce nazwy")
 }
+
+func TestScanner_Logic_NonImageFiles(t *testing.T) {
+	_, queries, scanner, root := setupLogicTest(t)
+	ctx := context.Background()
+
+	// IMPORTANT: Allow .blend extension for this test
+	scanner.config.SetAllowedExtensions([]string{".txt", ".png", ".blend"})
+
+	// A. Create a .blend file
+	blendPath := filepath.Join(root, "scene.blend")
+	createDummyFile(t, blendPath)
+
+	// B. Scan it
+	err := scanner.ScanFile(ctx, blendPath)
+	assert.NoError(t, err)
+
+	// C. Verify it exists in DB
+	asset, err := queries.GetAssetByPath(ctx, blendPath)
+	assert.NoError(t, err)
+	assert.Equal(t, blendPath, asset.FilePath)
+	assert.Equal(t, "model", asset.FileType)
+	assert.NotEmpty(t, asset.ThumbnailPath)
+	assert.Contains(t, asset.ThumbnailPath, "blend_placeholder.webp")
+}

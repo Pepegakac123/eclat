@@ -9,6 +9,7 @@ export const useAssetEvents = () => {
     const cleanup = EventsOn("assets:changed", (data) => {
       console.log("⚡ Asset change detected via Watcher:", data);
       queryClient.invalidateQueries({ queryKey: ["assets"] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
       queryClient.invalidateQueries({ queryKey: ["folders"] });
     });
 

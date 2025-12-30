@@ -136,7 +136,7 @@ func (g *DiskThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailRes
 	}
 
 	return ThumbnailResult{
-		WebPath:       fullDestPath,
+		WebPath:       "/thumbnails/" + filename,
 		Metadata:      imgMetadata,
 		IsPlaceholder: false,
 	}, nil

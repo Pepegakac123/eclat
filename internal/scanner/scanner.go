@@ -535,8 +535,11 @@ func (s *Scanner) ApplyBatch(ctx context.Context, buffer []ScanResult) error {
 func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry fs.DirEntry, folderId int64, filetype string, hash string, targetGroupID string) (database.CreateAssetParams, error) {
 	thumb, err := s.thumbGen.Generate(ctx, path)
 	if err != nil {
-		s.logger.Debug("Failed to generate thumbnail", "path", path, "error", err)
-		return database.CreateAssetParams{}, err
+		s.logger.Warn("Failed to generate thumbnail, proceeding without it", "path", path, "error", err)
+		// We don't return error here, because we still want to add the asset to the DB
+		thumb = ThumbnailResult{
+			WebPath: "/placeholders/generic_placeholder.webp",
+		}
 	}
 	info, err := os.Stat(path)
 	if err != nil {

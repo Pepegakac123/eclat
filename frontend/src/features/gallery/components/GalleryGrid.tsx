@@ -159,7 +159,7 @@ export const GalleryGrid = ({ mode }: GalleryGridProps) => {
       />
     );
   }
-
+  console.log(allAssets[0]);
   return (
     <div className="h-full w-full">
       <div

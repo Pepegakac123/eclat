@@ -26,6 +26,7 @@ export const useMaterialSets = () => {
     mutationFn: (data: app.CreateMaterialSetRequest) => Create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
       addToast({
         title: "Success",
         description: "Material Set created successfully.",
@@ -51,6 +52,7 @@ export const useMaterialSets = () => {
       Update(id, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
       queryClient.invalidateQueries({
         queryKey: [QUERY_KEY, variables.id],
       });
@@ -82,6 +84,7 @@ export const useMaterialSets = () => {
     mutationFn: Delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
       addToast({
         title: "Deleted",
         description: "Material Set has been removed.",
@@ -112,6 +115,7 @@ export const useMaterialSets = () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: ["assets"] });
       queryClient.invalidateQueries({ queryKey: ["asset", variables.assetId] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
     },
     onError: (error: any) => {
       addToast({
@@ -133,6 +137,7 @@ export const useMaterialSets = () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: ["assets"] });
       queryClient.invalidateQueries({ queryKey: ["asset", variables.assetId] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
 
       addToast({
         title: "Removed",

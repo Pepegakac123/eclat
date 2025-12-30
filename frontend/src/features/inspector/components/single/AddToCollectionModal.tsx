@@ -10,7 +10,6 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Search, Plus, Check, Shapes, FolderPlus } from "lucide-react";
-import { MaterialSet } from "@/types/api"; // Upewnij się, że masz import MaterialSet
 import { app } from "@wailsjs/go/models";
 import { useMaterialSets } from "@/layouts/sidebar/hooks/useMaterialSets";
 import {
@@ -218,13 +217,12 @@ export const AddToCollectionModal = ({
         isLoading={isCreatingSet}
         onSubmit={handleCreateSet}
         // Przekazujemy searchQuery jako initialData (tylko nazwę).
-        // Rzutujemy na 'any' lub 'MaterialSet', bo brakuje nam ID,
-        // ale formularz obsłuży to poprawnie (użyje defaultów dla reszty).
         initialData={
-          searchQuery ? ({ name: searchQuery } as MaterialSet) : undefined
+          searchQuery ? app.MaterialSet.createFrom({ name: searchQuery }) : undefined
         }
       />
     </>
   );
 };
+
 
