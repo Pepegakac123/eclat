@@ -244,7 +244,7 @@ func (s *MaterialSetService) GetById(id int64) (*MaterialSet, error) {
 		ThumbnailPath:  thumbPath,
 		DateAdded:      ms.DateAdded,
 		LastModified:   ms.LastModified,
-		TotalAssets:    0, // Default to 0 as query doesn't include count
+		TotalAssets:    ms.TotalAssets,
 	}, nil
 }
 

@@ -393,7 +393,7 @@ export const AssetCard = ({
 								<p className="text-sm text-default-500 mb-2">
 									Renaming this asset will also rename the file on your system
 									path: <br />
-									<span className="font-mono text-xs">{filePath}</span>
+									<span className="font-mono text-xs break-all">{filePath}</span>
 								</p>
 								<Input
 									autoFocus

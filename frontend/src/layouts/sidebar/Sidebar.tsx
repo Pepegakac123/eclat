@@ -47,7 +47,7 @@ export const Sidebar = () => {
             <Layers size={20} />
           </div>
           <span className="text-foreground text-lg">
-            ArtAsset<span className="text-primary">Mngr</span>
+            Eclat
           </span>
         </div>
       </div>
