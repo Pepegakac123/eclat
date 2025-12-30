@@ -39,6 +39,7 @@ export const useAssets = (
           break;
         case UI_CONFIG.GALLERY.AllowedDisplayContentModes.uncategorized:
           currentFilters.isDeleted = false;
+          currentFilters.onlyUncategorized = true;
           break;
         default:
           currentFilters.isDeleted = false;

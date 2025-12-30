@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"eclat/internal/database"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -14,19 +16,61 @@ import (
 	sq "github.com/Masterminds/squirrel"
 )
 
-// AssetService - Serwis (Zaktualizowany o sysDB)
-type AssetService struct {
-	ctx    context.Context
-	db     database.Querier
-	sysDB  *sql.DB
-	logger *slog.Logger
+// ... (existing code)
+
+// GetThumbnailData returns the thumbnail image as a base64 data URL.
+// This is a workaround for issues serving dynamic assets via Wails Handler in some Dev environments.
+func (s *AssetService) GetThumbnailData(assetId int64) (string, error) {
+	asset, err := s.db.GetAssetById(context.Background(), assetId)
+	if err != nil {
+		return "", err
+	}
+
+	if asset.ThumbnailPath == "" {
+		return "", errors.New("no thumbnail path")
+	}
+
+	// If it's a placeholder, we return the path as is (frontend will handle it)
+	if strings.HasPrefix(asset.ThumbnailPath, "/placeholders/") {
+		return asset.ThumbnailPath, nil
+	}
+
+	// Resolve absolute path
+	filename := filepath.Base(asset.ThumbnailPath)
+	fullPath := filepath.Join(s.thumbnailsDir, filename)
+
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read thumbnail: %w", err)
+	}
+
+	// Determine MIME type (usually webp)
+	mimeType := "image/webp"
+	if strings.HasSuffix(strings.ToLower(filename), ".png") {
+		mimeType = "image/png"
+	} else if strings.HasSuffix(strings.ToLower(filename), ".jpg") || strings.HasSuffix(strings.ToLower(filename), ".jpeg") {
+		mimeType = "image/jpeg"
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(data)
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, encoded), nil
 }
 
-func NewAssetService(db database.Querier, sysDB *sql.DB, logger *slog.Logger) *AssetService {
+// AssetService - Serwis (Zaktualizowany o sysDB)
+type AssetService struct {
+	ctx           context.Context
+	db            database.Querier
+	sysDB         *sql.DB
+	logger        *slog.Logger
+	thumbnailsDir string
+}
+
+func NewAssetService(db database.Querier, sysDB *sql.DB, logger *slog.Logger, thumbnailsDir string) *AssetService {
 	return &AssetService{
-		db:     db,
-		sysDB:  sysDB,
-		logger: logger,
+		db:            db,
+		sysDB:         sysDB,
+		logger:        logger,
+		thumbnailsDir: thumbnailsDir,
 	}
 }
 
@@ -177,6 +221,7 @@ type AssetQueryFilters struct {
 
 	HasAlpha      *bool  `json:"hasAlpha"`
 	OnlyFavorites bool   `json:"onlyFavorites"`
+	OnlyUncategorized bool `json:"onlyUncategorized"`
 	IsDeleted     bool   `json:"isDeleted"`
 	IsHidden      bool   `json:"isHidden"`
 	CollectionID  *int64 `json:"collectionId"`
@@ -230,7 +275,7 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 		"a.thumbnail_path", "a.date_added", "a.last_modified",
 		"a.image_width", "a.image_height", "a.dominant_color",
 		"a.rating", "a.is_favorite", "a.is_deleted", "a.is_hidden", "a.group_id",
-		"a.has_alpha_channel",
+		"a.has_alpha_channel", "a.bit_depth", "a.file_hash", "a.description",
 	).From("assets a")
 
 	// Jeśli nie szukamy w koszu, filtrujemy po folderach
@@ -250,7 +295,7 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 
 	// Filtrowanie po Kolekcji
 	if filters.CollectionID != nil {
-		base = base.Join("material_set_assets msa ON a.id = msa.asset_id").
+		base = base.Join("asset_material_sets msa ON a.id = msa.asset_id").
 			Where(sq.Eq{"msa.material_set_id": *filters.CollectionID})
 	}
 
@@ -267,28 +312,45 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 
 	// Rating
 	if len(filters.RatingRange) == 2 {
-		base = base.Where(sq.GtOrEq{"a.rating": filters.RatingRange[0]})
-		base = base.Where(sq.LtOrEq{"a.rating": filters.RatingRange[1]})
+		if filters.RatingRange[0] > 0 {
+			base = base.Where(sq.GtOrEq{"a.rating": filters.RatingRange[0]})
+		}
+		if filters.RatingRange[1] < 5 {
+			base = base.Where(sq.LtOrEq{"a.rating": filters.RatingRange[1]})
+		}
 	}
 
 	// File Size (MB -> Bytes)
 	if len(filters.FileSizeRange) == 2 {
-		minBytes := int64(filters.FileSizeRange[0]) * 1024 * 1024
-		maxBytes := int64(filters.FileSizeRange[1]) * 1024 * 1024
-		base = base.Where(sq.GtOrEq{"a.file_size": minBytes})
-		base = base.Where(sq.LtOrEq{"a.file_size": maxBytes})
+		if filters.FileSizeRange[0] > 0 {
+			minBytes := int64(filters.FileSizeRange[0]) * 1024 * 1024
+			base = base.Where(sq.GtOrEq{"a.file_size": minBytes})
+		}
+		if filters.FileSizeRange[1] < 4096 { // 4GB max in UI usually
+			maxBytes := int64(filters.FileSizeRange[1]) * 1024 * 1024
+			base = base.Where(sq.LtOrEq{"a.file_size": maxBytes})
+		}
 	}
 
-	// Width
-	if len(filters.WidthRange) == 2 && filters.WidthRange[1] > 0 {
-		base = base.Where(sq.GtOrEq{"a.image_width": filters.WidthRange[0]})
-		base = base.Where(sq.LtOrEq{"a.image_width": filters.WidthRange[1]})
+	// Dimensions - FIXED: Only apply if min > 0 OR max < DEFAULT_MAX.
+	// This ensures that NULL values (models) are NOT filtered out when range is 0-MAX.
+	const defaultMaxDim = 8160 // Matches frontend UI_CONFIG.GALLERY.FilterOptions.MAX_DIMENSION
+	if len(filters.WidthRange) == 2 {
+		if filters.WidthRange[0] > 0 {
+			base = base.Where(sq.GtOrEq{"a.image_width": filters.WidthRange[0]})
+		}
+		if filters.WidthRange[1] > 0 && filters.WidthRange[1] < defaultMaxDim {
+			base = base.Where(sq.LtOrEq{"a.image_width": filters.WidthRange[1]})
+		}
 	}
 
-	// Height
-	if len(filters.HeightRange) == 2 && filters.HeightRange[1] > 0 {
-		base = base.Where(sq.GtOrEq{"a.image_height": filters.HeightRange[0]})
-		base = base.Where(sq.LtOrEq{"a.image_height": filters.HeightRange[1]})
+	if len(filters.HeightRange) == 2 {
+		if filters.HeightRange[0] > 0 {
+			base = base.Where(sq.GtOrEq{"a.image_height": filters.HeightRange[0]})
+		}
+		if filters.HeightRange[1] > 0 && filters.HeightRange[1] < defaultMaxDim {
+			base = base.Where(sq.LtOrEq{"a.image_height": filters.HeightRange[1]})
+		}
 	}
 
 	// Daty
@@ -336,6 +398,9 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 			return nil, fmt.Errorf("failed to build tag subquery: %w", err)
 		}
 		base = base.Where(fmt.Sprintf("a.id IN (%s)", subSql), subArgs...)
+	} else if filters.OnlyUncategorized {
+		// Assets with NO tags
+		base = base.Where("NOT EXISTS (SELECT 1 FROM asset_tags at WHERE at.asset_id = a.id)")
 	}
 
 	// ==========================================
@@ -418,13 +483,16 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 		var dateAddedStr string // SQLite TEXT
 		var lastModTime time.Time
 		var groupId sql.NullString
+		var bitDepth sql.NullInt64
+		var fileHash sql.NullString
+		var description sql.NullString
 
 		err := rows.Scan(
 			&a.ID, &a.FileName, &a.FilePath, &a.FileType, &a.FileSize,
 			&thumbPath, &dateAddedStr, &lastModTime,
 			&imgW, &imgH, &domColor,
 			&a.Rating, &a.IsFavorite, &a.IsDeleted, &a.IsHidden, &groupId,
-			&hasAlpha,
+			&hasAlpha, &bitDepth, &fileHash, &description,
 		)
 		if err != nil {
 			return nil, err
@@ -437,6 +505,17 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 		} else {
 			a.GroupID = nil
 		}
+
+		if bitDepth.Valid {
+			a.BitDepth = bitDepth.Int64
+		}
+		if fileHash.Valid {
+			a.FileHash = fileHash.String
+		}
+		if description.Valid {
+			a.Description = description.String
+		}
+
 		if thumbPath.Valid {
 			a.ThumbnailPath = thumbPath.String
 		} else {
@@ -484,6 +563,10 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 
 	if results == nil {
 		results = []AssetDetails{}
+	}
+
+	if len(results) > 0 {
+		s.logger.Debug("Returning assets", "count", len(results), "firstThumb", results[0].ThumbnailPath)
 	}
 
 	return &PagedAssetResult{

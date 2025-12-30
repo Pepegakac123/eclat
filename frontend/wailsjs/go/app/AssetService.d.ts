@@ -17,6 +17,8 @@ export function GetLibraryStats():Promise<app.LibraryStats>;
 
 export function GetSidebarStats():Promise<app.SidebarStats>;
 
+export function GetThumbnailData(arg1:number):Promise<string>;
+
 export function MigrateThumbnailPaths():Promise<void>;
 
 export function RemoveAssetFromMaterialSet(arg1:number,arg2:number):Promise<void>;

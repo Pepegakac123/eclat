@@ -30,6 +30,10 @@ export function GetSidebarStats() {
   return window['go']['app']['AssetService']['GetSidebarStats']();
 }
 
+export function GetThumbnailData(arg1) {
+  return window['go']['app']['AssetService']['GetThumbnailData'](arg1);
+}
+
 export function MigrateThumbnailPaths() {
   return window['go']['app']['AssetService']['MigrateThumbnailPaths']();
 }

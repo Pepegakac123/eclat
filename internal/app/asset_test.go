@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"eclat/internal/database"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -253,4 +255,73 @@ func TestAssetService_GetAssets(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, res.TotalCount)
 	assert.Equal(t, a2.ID, res.Items[0].ID)
+}
+
+func TestAssetService_GetAssets_ByFileType(t *testing.T) {
+	service, queries := setupAssetServiceTest(t)
+
+	// 1. Prepare Data
+	insertTestAssetWithParams(t, queries, "image.png", "/tmp/image.png", false, false) // default "image"
+	
+	// Insert a Model
+	folder, _ := queries.CreateScanFolder(context.Background(), "/tmp/models")
+	queries.CreateAsset(context.Background(), database.CreateAssetParams{
+		ScanFolderID: sql.NullInt64{Int64: folder.ID, Valid: true},
+		FileName:     "model.blend",
+		FilePath:     "/tmp/models/model.blend",
+		FileType:     "model",
+		FileSize:     2048,
+		LastModified: time.Now(),
+		LastScanned:  time.Now(),
+		GroupID:      "group_model",
+	})
+
+	// Insert a Texture
+	queries.CreateAsset(context.Background(), database.CreateAssetParams{
+		ScanFolderID: sql.NullInt64{Int64: folder.ID, Valid: true},
+		FileName:     "texture.tga",
+		FilePath:     "/tmp/models/texture.tga",
+		FileType:     "texture",
+		FileSize:     512,
+		LastModified: time.Now(),
+		LastScanned:  time.Now(),
+		GroupID:      "group_texture",
+	})
+
+	// 2. Test Cases
+
+	// Case A: All (should get 3)
+	res, err := service.GetAssets(AssetQueryFilters{Page: 1, PageSize: 10})
+	assert.NoError(t, err)
+	assert.Equal(t, 3, res.TotalCount)
+
+	// Case B: Filter by "model"
+	res, err = service.GetAssets(AssetQueryFilters{
+		Page:      1,
+		PageSize:  10,
+		FileTypes: []string{"model"},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, res.TotalCount)
+	assert.Equal(t, "model", res.Items[0].FileType)
+	assert.Equal(t, "model.blend", res.Items[0].FileName)
+
+	// Case C: Filter by "texture"
+	res, err = service.GetAssets(AssetQueryFilters{
+		Page:      1,
+		PageSize:  10,
+		FileTypes: []string{"texture"},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, res.TotalCount)
+	assert.Equal(t, "texture", res.Items[0].FileType)
+
+	// Case D: Filter by "model" AND "texture"
+	res, err = service.GetAssets(AssetQueryFilters{
+		Page:      1,
+		PageSize:  10,
+		FileTypes: []string{"model", "texture"},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 2, res.TotalCount)
 }

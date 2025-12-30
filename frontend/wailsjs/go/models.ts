@@ -107,6 +107,7 @@ export namespace app {
 	    dateRange: any;
 	    hasAlpha?: boolean;
 	    onlyFavorites: boolean;
+	    onlyUncategorized: boolean;
 	    isDeleted: boolean;
 	    isHidden: boolean;
 	    collectionId?: number;
@@ -133,6 +134,7 @@ export namespace app {
 	        this.dateRange = this.convertValues(source["dateRange"], Object);
 	        this.hasAlpha = source["hasAlpha"];
 	        this.onlyFavorites = source["onlyFavorites"];
+	        this.onlyUncategorized = source["onlyUncategorized"];
 	        this.isDeleted = source["isDeleted"];
 	        this.isHidden = source["isHidden"];
 	        this.collectionId = source["collectionId"];
