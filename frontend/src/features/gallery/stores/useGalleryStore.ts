@@ -38,11 +38,13 @@ interface GalleryState {
   // Stany Assetów
   selectedAssetIds: Set<number>;
   lastSelectedAssetId: number | null;
+  filteredCount: number | null;
 
   // --- Actions ---
   setZoomLevel: (zoom: number) => void;
   setViewMode: (mode: "grid" | "masonry") => void;
   setPageSize: (size: number) => void;
+  setFilteredCount: (count: number | null) => void;
 
   // Update filtrów (Partial pozwala aktualizować tylko jedno pole np. tylko tags)
   setFilters: (newFilters: Partial<GalleryFilters>) => void;
@@ -84,11 +86,13 @@ export const useGalleryStore = create<GalleryState>()(
     sortDesc: true, // Default z C# (OrderByDescending)
     selectedAssetIds: new Set<number>(),
     lastSelectedAssetId: null,
+    filteredCount: null,
 
     // Actions
     setZoomLevel: (zoom) => set({ zoomLevel: zoom }),
     setViewMode: (mode) => set({ viewMode: mode }),
     setPageSize: (size) => set({ pageSize: size }),
+    setFilteredCount: (count) => set({ filteredCount: count }),
 
     setFilters: (newFilters) =>
       set((state) => ({

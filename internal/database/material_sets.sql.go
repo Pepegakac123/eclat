@@ -74,7 +74,8 @@ func (q *Queries) DeleteMaterialSet(ctx context.Context, id int64) error {
 const getMaterialSetById = `-- name: GetMaterialSetById :one
 SELECT 
     ms.id, ms.name, ms.description, ms.cover_asset_id, ms.custom_cover_url, ms.custom_color, ms.date_added, ms.last_modified,
-    a.thumbnail_path as cover_thumbnail_path
+    a.thumbnail_path as cover_thumbnail_path,
+    (SELECT COUNT(*) FROM asset_material_sets ams WHERE ams.material_set_id = ms.id) as total_assets
 FROM material_sets ms 
 LEFT JOIN assets a ON ms.cover_asset_id = a.id
 WHERE ms.id = ? LIMIT 1
@@ -90,6 +91,7 @@ type GetMaterialSetByIdRow struct {
 	DateAdded          time.Time      `json:"dateAdded"`
 	LastModified       time.Time      `json:"lastModified"`
 	CoverThumbnailPath sql.NullString `json:"coverThumbnailPath"`
+	TotalAssets        int64          `json:"totalAssets"`
 }
 
 func (q *Queries) GetMaterialSetById(ctx context.Context, id int64) (GetMaterialSetByIdRow, error) {
@@ -105,6 +107,7 @@ func (q *Queries) GetMaterialSetById(ctx context.Context, id int64) (GetMaterial
 		&i.DateAdded,
 		&i.LastModified,
 		&i.CoverThumbnailPath,
+		&i.TotalAssets,
 	)
 	return i, err
 }

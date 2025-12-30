@@ -244,8 +244,24 @@ func (s *MaterialSetService) GetById(id int64) (*MaterialSet, error) {
 		ThumbnailPath:  thumbPath,
 		DateAdded:      ms.DateAdded,
 		LastModified:   ms.LastModified,
-		TotalAssets:    0, // Default to 0 as query doesn't include count
+		TotalAssets:    ms.TotalAssets,
 	}, nil
+}
+
+// AddAsset adds an asset to a material set.
+func (s *MaterialSetService) AddAsset(setId int64, assetId int64) error {
+	return s.db.AddAssetToMaterialSet(s.ctx, database.AddAssetToMaterialSetParams{
+		MaterialSetID: setId,
+		AssetID:       assetId,
+	})
+}
+
+// RemoveAsset removes an asset from a material set.
+func (s *MaterialSetService) RemoveAsset(setId int64, assetId int64) error {
+	return s.db.RemoveAssetFromMaterialSet(s.ctx, database.RemoveAssetFromMaterialSetParams{
+		MaterialSetID: setId,
+		AssetID:       assetId,
+	})
 }
 
 // Helpers

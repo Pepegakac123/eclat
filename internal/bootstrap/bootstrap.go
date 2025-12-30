@@ -31,6 +31,7 @@ type Dependencies struct {
 	App                *app.App
 	AssetService       *app.AssetService
 	MaterialSetService *app.MaterialSetService
+	TagService         *app.TagService
 	ScannerService     *scanner.Scanner
 	SettingsService    *settings.SettingsService
 	WatcherService     *watcher.Service
@@ -128,8 +129,9 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 	settingsService := settings.NewSettingsService(queries, programLogger, notifier, watcherService, sharedConfig)
 	assetService := app.NewAssetService(queries, db, programLogger, thumbsFolder)
 	materialSetService := app.NewMaterialSetService(queries, programLogger, diskThumbGen)
+	tagService := app.NewTagService(queries, programLogger)
 
-	myApp := app.NewApp(queries, programLogger, assetService, materialSetService, scannerService, settingsService, watcherService)
+	myApp := app.NewApp(queries, programLogger, assetService, materialSetService, tagService, scannerService, settingsService, watcherService)
 
 	return &Dependencies{
 		DB:                 db,
@@ -137,6 +139,7 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 		App:                myApp,
 		AssetService:       assetService,
 		MaterialSetService: materialSetService,
+		TagService:         tagService,
 		ScannerService:     scannerService,
 		SettingsService:    settingsService,
 		WatcherService:     watcherService,

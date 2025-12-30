@@ -69,7 +69,7 @@ Built with **Go** (backend) and **React** (frontend) using the **Wails** framewo
 
 ### Development Guidelines
 *   **Database:** Modifying `sql/queries/*.sql` or `sql/schema/*.sql` requires running `sqlc generate` to update the Go code.
-*   **Wails Bindings:** Adding public methods to the `App` struct (or other bound structs) requires a rebuild (or `wails dev` reload) to update `frontend/wailsjs`.
+*   **Wails Bindings:** Adding public methods to the `App` struct (or other bound structs) requires a rebuild to update `frontend/wailsjs` so after every change that might affect bindings run shell Command `wails generate module`.
 *   **Styling:** Follow the existing Tailwind CSS v4 patterns. Use HeroUI components where possible for consistency.
 *   **Idiomatic GO:** Follow the Idiomatic approach to writing a backend GOLANG code. Try minimalise the use of external package.
 *   **Testing:** After each major change instead of rebulding project try run test wit the command go run test './...'.

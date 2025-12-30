@@ -7,7 +7,7 @@ import {
   Heart,
   Box,
   Shapes,
-  Trash2, // Import ikony kosza
+  EyeOff,
 } from "lucide-react";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarItem } from "./SidebarItem";
@@ -21,17 +21,12 @@ import { useAssetsStats } from "@/features/gallery/hooks/useAssetsStats";
 import { SidebarCollections } from "./SidebarCollections";
 import { SidebarFilters } from "@/features/gallery/components/SidebarFilters";
 /*
-TODO: [API] Dynamic Statistics
-- "All Assets count", "Trash count": Pobierać te liczby z API (np. endpoint GET /api/stats/sidebar).
-- Uncategorized count: To ważna metryka dla workflow "Inbox Zero".
-}
+
 
 TODO: [FEATURE] Smart Collections & Drag-Drop
 - UI Guidelines (Sekcja 6.2): Dodać sekcję "Smart Collections" (zapisane filtry z bazy).
 - UI Guidelines (Sekcja 6.2): Obsłużyć Drag & Drop - przeciąganie assetu z Gridu na nazwę Kolekcji w Sidebarze powinno go do niej dodać.
 
-TODO: [ROUTING] Active Link Logic
-- Upewnić się, że kliknięcie w "Trash" faktycznie zmienia filtr w Store (`isDeleted: true`) i odświeża Grid.
 */
 
 export const Sidebar = () => {
@@ -46,8 +41,8 @@ export const Sidebar = () => {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20">
             <Layers size={20} />
           </div>
-          <span className="text-foreground text-lg">
-            ArtAsset<span className="text-primary">Mngr</span>
+          <span className="text-foreground font-mono text-xl font-extrabold tracking-tight">
+            Eclat
           </span>
         </div>
       </div>
@@ -75,10 +70,10 @@ export const Sidebar = () => {
             count={sidebarStats?.totalUncategorized || 0}
           />
           <SidebarItem
-            icon={Trash2}
-            label="Trash"
-            to="/trash"
-            count={sidebarStats?.totalTrash || 0}
+            icon={EyeOff}
+            label="Hidden"
+            to="/hidden"
+            count={sidebarStats?.totalHidden || 0}
           />
         </SidebarSection>
 

@@ -34,6 +34,7 @@ export const GalleryGrid = ({ mode }: GalleryGridProps) => {
     lastSelectedAssetId,
     selectAsset,
     setSelection,
+    setFilteredCount,
   } = useGalleryStore(
     useShallow((state) => ({
       zoomLevel: state.zoomLevel,
@@ -46,6 +47,7 @@ export const GalleryGrid = ({ mode }: GalleryGridProps) => {
       lastSelectedAssetId: state.lastSelectedAssetId,
       selectAsset: state.selectAsset,
       setSelection: state.setSelection,
+      setFilteredCount: state.setFilteredCount,
     })),
   );
 
@@ -108,6 +110,12 @@ export const GalleryGrid = ({ mode }: GalleryGridProps) => {
     const isMulti = e.ctrlKey || e.metaKey;
     selectAsset(assetId, isMulti);
   };
+
+  useEffect(() => {
+    if (data?.pages[0]) {
+      setFilteredCount(data.pages[0].totalCount);
+    }
+  }, [data, setFilteredCount]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(

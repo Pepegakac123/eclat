@@ -4,8 +4,7 @@ import {
   useMutation,
   useInfiniteQuery,
 } from "@tanstack/react-query";
-import { GetAssets } from "../../../../wailsjs/go/app/AssetService";
-import { GetPredefinedPalette } from "../../../../wailsjs/go/scanner/Scanner";
+import { GetAssets, GetAvailableColors } from "../../../../wailsjs/go/app/AssetService";
 import { OpenInExplorer } from "../../../../wailsjs/go/app/App";
 import { app } from "../../../../wailsjs/go/models";
 import { UI_CONFIG } from "@/config/constants";
@@ -40,6 +39,10 @@ export const useAssets = (
         case UI_CONFIG.GALLERY.AllowedDisplayContentModes.uncategorized:
           currentFilters.isDeleted = false;
           currentFilters.onlyUncategorized = true;
+          break;
+        case UI_CONFIG.GALLERY.AllowedDisplayContentModes.hidden:
+          currentFilters.isDeleted = false;
+          currentFilters.isHidden = true;
           break;
         default:
           currentFilters.isDeleted = false;
@@ -90,7 +93,7 @@ export const useAssets = (
 export const useColors = () => {
   const colorsQuery = useQuery({
     queryKey: ["colors"],
-    queryFn: GetPredefinedPalette,
+    queryFn: GetAvailableColors,
   });
 
   return colorsQuery.data;

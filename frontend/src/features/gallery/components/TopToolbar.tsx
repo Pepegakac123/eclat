@@ -43,6 +43,7 @@ export const TopToolbar = () => {
     resetFilters,
     pageSize,
     setPageSize,
+    filteredCount,
   } = useGalleryStore(
     useShallow((state) => ({
       zoomLevel: state.zoomLevel,
@@ -58,6 +59,7 @@ export const TopToolbar = () => {
       resetFilters: state.resetFilters,
       pageSize: state.pageSize,
       setPageSize: state.setPageSize,
+      filteredCount: state.filteredCount,
     })),
   );
 
@@ -86,6 +88,7 @@ export const TopToolbar = () => {
     if (path.startsWith("/favorites")) return "Favorites";
     if (path.startsWith("/trash")) return "Recycle Bin";
     if (path.startsWith("/uncategorized")) return "Uncategorized";
+    if (path.startsWith("/hidden")) return "Hidden Assets";
 
     return "All Assets";
   };
@@ -108,15 +111,24 @@ export const TopToolbar = () => {
       else if (path.startsWith("/trash")) count = stats?.totalTrash;
       else if (path.startsWith("/uncategorized"))
         count = stats?.totalUncategorized;
+      else if (path.startsWith("/hidden")) count = stats?.totalHidden;
       else count = stats?.totalAssets; // Default: All Assets
     }
 
     if (loading) return <Skeleton className="h-6 w-16 rounded-full" />;
-    const displayCount = count ?? 0;
+    const total = count ?? 0;
+    const current = filteredCount ?? total;
+
+    // Jeśli filtrowanie zmniejszyło liczbę wyników, pokaż "Aktualne / Wszystkie"
+    // Ale tylko jeśli mamy załadowane statystyki (filteredCount !== null)
+    const displayText =
+      current !== total && filteredCount !== null
+        ? `${current} / ${total}`
+        : `${total}`;
 
     return (
       <span className="rounded-full bg-default-100 px-2.5 py-0.5 text-xs font-medium text-default-500">
-        {displayCount}
+        {displayText}
       </span>
     );
   };

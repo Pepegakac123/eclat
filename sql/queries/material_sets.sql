@@ -10,7 +10,8 @@ ORDER BY ms.name;
 -- name: GetMaterialSetById :one
 SELECT 
     ms.*,
-    a.thumbnail_path as cover_thumbnail_path
+    a.thumbnail_path as cover_thumbnail_path,
+    (SELECT COUNT(*) FROM asset_material_sets ams WHERE ams.material_set_id = ms.id) as total_assets
 FROM material_sets ms 
 LEFT JOIN assets a ON ms.cover_asset_id = a.id
 WHERE ms.id = ? LIMIT 1;

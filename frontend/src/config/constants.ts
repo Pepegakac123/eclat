@@ -11,6 +11,7 @@ export const UI_CONFIG = {
       uncategorized: "uncategorized",
       trash: "trash",
       collection: "collection",
+      hidden: "hidden",
     },
     AllowedSortOptions: {
       dateadded: "dateadded",
