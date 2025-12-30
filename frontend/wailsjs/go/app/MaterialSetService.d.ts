@@ -3,6 +3,8 @@
 import {app} from '../models';
 import {context} from '../models';
 
+export function AddAsset(arg1:number,arg2:number):Promise<void>;
+
 export function Create(arg1:app.CreateMaterialSetRequest):Promise<app.MaterialSet>;
 
 export function Delete(arg1:number):Promise<void>;
@@ -10,6 +12,8 @@ export function Delete(arg1:number):Promise<void>;
 export function GetAll():Promise<Array<app.MaterialSet>>;
 
 export function GetById(arg1:number):Promise<app.MaterialSet>;
+
+export function RemoveAsset(arg1:number,arg2:number):Promise<void>;
 
 export function SetMaterialSetCoverFromFile(arg1:number,arg2:string):Promise<app.MaterialSet>;
 

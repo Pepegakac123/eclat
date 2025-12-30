@@ -248,6 +248,22 @@ func (s *MaterialSetService) GetById(id int64) (*MaterialSet, error) {
 	}, nil
 }
 
+// AddAsset adds an asset to a material set.
+func (s *MaterialSetService) AddAsset(setId int64, assetId int64) error {
+	return s.db.AddAssetToMaterialSet(s.ctx, database.AddAssetToMaterialSetParams{
+		MaterialSetID: setId,
+		AssetID:       assetId,
+	})
+}
+
+// RemoveAsset removes an asset from a material set.
+func (s *MaterialSetService) RemoveAsset(setId int64, assetId int64) error {
+	return s.db.RemoveAssetFromMaterialSet(s.ctx, database.RemoveAssetFromMaterialSetParams{
+		MaterialSetID: setId,
+		AssetID:       assetId,
+	})
+}
+
 // Helpers
 func getString(s *string) string {
 	if s == nil {

@@ -1,14 +1,12 @@
 import { addToast } from "@heroui/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-	AddAssetToMaterialSet,
-	RemoveAssetFromMaterialSet,
-} from "../../../../wailsjs/go/app/AssetService";
-import {
+	AddAsset,
 	Create,
 	Delete,
 	GetAll,
 	GetById,
+	RemoveAsset,
 	SetMaterialSetCoverFromFile,
 	Update,
 } from "../../../../wailsjs/go/app/MaterialSetService";
@@ -135,7 +133,7 @@ export const useMaterialSets = () => {
 
 	const addAssetToSetMutation = useMutation({
 		mutationFn: ({ setId, assetId }: { setId: number; assetId: number }) =>
-			AddAssetToMaterialSet(setId, assetId),
+			AddAsset(setId, assetId),
 
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({
@@ -156,7 +154,7 @@ export const useMaterialSets = () => {
 	});
 	const removeAssetFromSetMutation = useMutation({
 		mutationFn: ({ setId, assetId }: { setId: number; assetId: number }) =>
-			RemoveAssetFromMaterialSet(setId, assetId),
+			RemoveAsset(setId, assetId),
 
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({

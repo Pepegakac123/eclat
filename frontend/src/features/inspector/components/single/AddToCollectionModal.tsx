@@ -9,14 +9,13 @@ import {
 } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { app } from "@wailsjs/go/models";
-import { Check, FolderPlus, Plus, Search, Shapes } from "lucide-react";
+import { Check, FolderPlus, Plus, Search, Shapes, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useMaterialSets } from "@/layouts/sidebar/hooks/useMaterialSets";
 import {
 	type MaterialSetForm,
 	MaterialSetFormModal,
 } from "@/layouts/sidebar/MaterialSetFormModal";
-import { motion, AnimatePresence } from "framer-motion";
 
 interface AddToCollectionModalProps {
 	isOpen: boolean;
@@ -29,14 +28,20 @@ export const AddToCollectionModal = ({
 	onOpenChange,
 	asset,
 }: AddToCollectionModalProps) => {
-	const { materialSets, addAssetToSet, createMaterialSet, setCoverFromFile } =
-		useMaterialSets();
+	const {
+		materialSets,
+		addAssetToSet,
+		removeAssetFromSet,
+		createMaterialSet,
+		setCoverFromFile,
+	} = useMaterialSets();
 
 	const [searchQuery, setSearchQuery] = useState("");
 	const [loadingSetId, setLoadingSetId] = useState<number | null>(null);
 
 	const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 	const [isCreatingSet, setIsCreatingSet] = useState(false);
+	const [hoveredSetId, setHoveredSetId] = useState<number | null>(null);
 
 	const filteredSets = useMemo(() => {
 		return materialSets.filter((set) =>
@@ -48,10 +53,14 @@ export const AddToCollectionModal = ({
 		return (asset.materialSets || []).map((s) => s.id);
 	}, [asset.materialSets]);
 
-	const handleAdd = async (setId: number) => {
+	const handleToggle = async (setId: number, isAdded: boolean) => {
 		setLoadingSetId(setId);
 		try {
-			await addAssetToSet({ setId, assetId: asset.id });
+			if (isAdded) {
+				await removeAssetFromSet({ setId, assetId: asset.id });
+			} else {
+				await addAssetToSet({ setId, assetId: asset.id });
+			}
 		} finally {
 			setLoadingSetId(null);
 		}
@@ -153,11 +162,14 @@ export const AddToCollectionModal = ({
 											filteredSets.map((set) => {
 												const isAlreadyAdded = assetSetIds.includes(set.id);
 												const isLoading = loadingSetId === set.id;
+												const isHovered = hoveredSetId === set.id;
 
 												return (
 													<div
 														key={set.id}
 														className="flex items-center justify-between p-2 rounded-lg hover:bg-default-100 transition-colors border border-transparent hover:border-default-200"
+														onMouseEnter={() => setHoveredSetId(set.id)}
+														onMouseLeave={() => setHoveredSetId(null)}
 													>
 														<div className="flex items-center gap-3 overflow-hidden">
 															<div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -176,44 +188,38 @@ export const AddToCollectionModal = ({
 															</span>
 														</div>
 
-														<AnimatePresence mode="wait">
-															{isAlreadyAdded ? (
-																<motion.div
-																	key="check"
-																	initial={{ scale: 0.5, opacity: 0 }}
-																	animate={{ scale: 1, opacity: 1 }}
-																	exit={{ scale: 0.5, opacity: 0 }}
-																>
-																	<Button
-																		size="sm"
-																		isIconOnly
-																		variant="flat"
-																		color="primary"
-																		className="bg-primary/10 text-primary cursor-default rounded-full"
-																	>
+														<Button
+															size="sm"
+															isIconOnly
+															variant={isAlreadyAdded ? "flat" : "light"}
+															color={
+																isAlreadyAdded
+																	? isHovered
+																		? "danger"
+																		: "primary"
+																	: "default"
+															}
+															className={`rounded-full transition-colors ${
+																!isAlreadyAdded
+																	? "text-default-400 hover:text-primary hover:bg-primary/10"
+																	: isHovered
+																		? "bg-danger/10 text-danger"
+																		: "bg-primary/10 text-primary"
+															}`}
+															onPress={() => handleToggle(set.id, isAlreadyAdded)}
+															isLoading={isLoading}
+														>
+															{!isLoading &&
+																(isAlreadyAdded ? (
+																	isHovered ? (
+																		<X size={16} />
+																	) : (
 																		<Check size={16} />
-																	</Button>
-																</motion.div>
-															) : (
-																<motion.div
-																	key="plus"
-																	initial={{ scale: 0.5, opacity: 0 }}
-																	animate={{ scale: 1, opacity: 1 }}
-																	exit={{ scale: 0.5, opacity: 0 }}
-																>
-																	<Button
-																		size="sm"
-																		isIconOnly
-																		variant="light"
-																		className="text-default-400 hover:text-primary hover:bg-primary/10 rounded-full"
-																		onPress={() => handleAdd(set.id)}
-																		isLoading={isLoading}
-																	>
-																		{!isLoading && <Plus size={18} />}
-																	</Button>
-																</motion.div>
-															)}
-														</AnimatePresence>
+																	)
+																) : (
+																	<Plus size={18} />
+																))}
+														</Button>
 													</div>
 												);
 											})
