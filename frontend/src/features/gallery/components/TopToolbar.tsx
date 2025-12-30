@@ -88,6 +88,7 @@ export const TopToolbar = () => {
     if (path.startsWith("/favorites")) return "Favorites";
     if (path.startsWith("/trash")) return "Recycle Bin";
     if (path.startsWith("/uncategorized")) return "Uncategorized";
+    if (path.startsWith("/hidden")) return "Hidden Assets";
 
     return "All Assets";
   };
@@ -110,6 +111,7 @@ export const TopToolbar = () => {
       else if (path.startsWith("/trash")) count = stats?.totalTrash;
       else if (path.startsWith("/uncategorized"))
         count = stats?.totalUncategorized;
+      else if (path.startsWith("/hidden")) count = stats?.totalHidden;
       else count = stats?.totalAssets; // Default: All Assets
     }
 
