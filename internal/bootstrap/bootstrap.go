@@ -68,7 +68,7 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 
 	multiWriter := io.MultiWriter(os.Stdout, logFile)
 	programLogger := slog.New(slog.NewTextHandler(multiWriter, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(programLogger)
 

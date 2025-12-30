@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { app } from "@wailsjs/go/models";
 import { addToast } from "@heroui/toast";
-import { useAssetMutation } from "../../hooks/useAsset";
+import { useAssetActions } from "../../hooks/useAssetActions";
+import { ClipboardSetText } from "../../../../../wailsjs/runtime/runtime";
 
 interface InspectorHeaderProps {
   asset: app.AssetDetails;
@@ -21,24 +22,47 @@ interface InspectorHeaderProps {
 
 export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
   const [localFileName, setLocalFileName] = useState(asset.fileName);
-  const { patch } = useAssetMutation(asset.id);
+  const [renameError, setRenameError] = useState("");
+  const { renameAsset, isRenaming, updateAssetType, isUpdatingType } = useAssetActions(asset.id);
 
   useEffect(() => {
     setLocalFileName(asset.fileName);
+    setRenameError("");
   }, [asset.fileName]);
 
   // --- HANDLERS ---
   const handleSave = () => {
     const trimmed = localFileName.trim();
-    if (!trimmed || trimmed === asset.fileName) {
-      setLocalFileName(asset.fileName);
+    
+    // Validation
+    if (!trimmed) {
+      setRenameError("Filename cannot be empty");
       return;
     }
-    patch({ fileName: trimmed });
+    if (/[\\/:*?"<>|]/.test(trimmed)) {
+      setRenameError('Invalid characters: \\ / : * ? " < > |');
+      return;
+    }
+    if (trimmed === asset.fileName) {
+      setLocalFileName(asset.fileName);
+      setRenameError("");
+      return;
+    }
+
+    renameAsset(trimmed, {
+      onSuccess: () => {
+        setRenameError("");
+      },
+      onError: (err: any) => {
+        setRenameError(err || "Failed to rename");
+        setLocalFileName(asset.fileName);
+      }
+    });
   };
 
   const handleCancel = () => {
     setLocalFileName(asset.fileName);
+    setRenameError("");
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -49,15 +73,17 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
     }
   };
 
-  const handleCopyPath = () => {
-    navigator.clipboard.writeText(asset.filePath);
-    addToast({
-      title: "Path Copied",
-      description: "Copied to clipboard",
-      color: "success",
-      variant: "flat",
-      timeout: 2000,
-    });
+  const handleCopyPath = async () => {
+    const success = await ClipboardSetText(asset.filePath);
+    if (success) {
+      addToast({
+        title: "Path Copied",
+        description: "Copied to clipboard",
+        color: "success",
+        variant: "flat",
+        timeout: 2000,
+      });
+    }
   };
 
   // --- LOGIKA ZMIANY TYPU ---
@@ -67,13 +93,7 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
 
   const handleConvertType = () => {
     const newType = isImage ? "texture" : "image";
-    patch({ fileType: newType });
-    addToast({
-      title: "Type Updated",
-      description: `Converted to ${newType}`,
-      color: "primary",
-      variant: "solid",
-    });
+    updateAssetType(newType);
   };
 
   return (
@@ -92,11 +112,17 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
         <Input
           variant="underlined"
           value={localFileName}
-          onValueChange={setLocalFileName}
+          onValueChange={(val) => {
+            setLocalFileName(val);
+            if (renameError) setRenameError("");
+          }}
           onBlur={handleSave}
           onKeyDown={handleKeyDown}
           size="lg"
           placeholder="Enter asset name"
+          isInvalid={!!renameError}
+          errorMessage={renameError}
+          isDisabled={isRenaming}
           classNames={{
             input:
               "font-bold text-medium text-default-900 group-hover/title:text-primary transition-colors",
@@ -104,7 +130,7 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
               "border-b-default-200 group-hover/title:border-b-primary/50 px-0 h-4 transition-colors",
           }}
           endContent={
-            localFileName !== asset.fileName && (
+            localFileName !== asset.fileName && !isRenaming && (
               <div className="flex gap-1 animate-appearance-in">
                 <button
                   type="button"
@@ -173,6 +199,7 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
                 className="h-6 text-[12px] font-medium px-2 flex flex-row items-center"
                 startContent={<RefreshCw size={10} />}
                 onPress={handleConvertType}
+                isLoading={isUpdatingType}
               >
                 To {isImage ? "Texture" : "Image"}
               </Button>
