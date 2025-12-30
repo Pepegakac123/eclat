@@ -71,6 +71,7 @@ func main() {
 			deps.App,
 			deps.AssetService,
 			deps.MaterialSetService,
+			deps.TagService,
 			deps.ScannerService,
 			deps.SettingsService,
 			deps.WatcherService,
