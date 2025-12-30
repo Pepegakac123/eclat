@@ -16,7 +16,8 @@ import (
 
 // setupTestDB initializes an in-memory SQLite database and applies migrations.
 func setupTestDB(t *testing.T) (*sql.DB, database.Querier) {
-	dsn := "file::memory:?cache=shared&_time_format=sqlite"
+	// Use a unique name for each test to avoid collisions in shared memory
+	dsn := "file:" + t.Name() + "?mode=memory&cache=shared&_time_format=sqlite"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("Failed to open db: %v", err)

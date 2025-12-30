@@ -37,8 +37,8 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if strings.HasPrefix(r.URL.Path, "/thumbnails/") {
-					filename := strings.TrimPrefix(r.URL.Path, "/thumbnails/")
+				if after, ok := strings.CutPrefix(r.URL.Path, "/thumbnails/"); ok {
+					filename := after
 					fullPath := filepath.Join(deps.ThumbnailsDir, filename)
 					http.ServeFile(w, r, fullPath)
 					return

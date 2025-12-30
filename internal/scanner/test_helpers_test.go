@@ -6,7 +6,6 @@ import (
 	"eclat/internal/config"
 	"eclat/internal/database"
 	"eclat/internal/feedback"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -49,8 +48,8 @@ func (m *MockNotifier) EmitAssetsChanged(ctx context.Context) {
 // setupTestDB initializes an in-memory SQLite database and applies migrations using Goose.
 // It returns the raw DB connection and the sqlc Querier interface.
 func setupTestDB(t *testing.T) (*sql.DB, database.Querier) {
-	// 1. Connection String (with cache=shared for in-memory DBs)
-	dsn := "file::memory:?cache=shared&_time_format=sqlite"
+	// Use a unique name for each test to avoid collisions in shared memory
+	dsn := "file:" + t.Name() + "?mode=memory&cache=shared&_time_format=sqlite"
 
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -135,10 +134,26 @@ type MockThumbnailGenerator struct {
 
 func (m *MockThumbnailGenerator) Generate(ctx context.Context, sourcePath string) (ThumbnailResult, error) {
 	if m.ShouldFail {
-		return ThumbnailResult{}, fmt.Errorf("mock error generator")
+		return ThumbnailResult{
+			WebPath:       "/placeholders/generic_placeholder.webp",
+			IsPlaceholder: true,
+		}, nil
 	}
+
+	ext := filepath.Ext(sourcePath)
+	webPath := "/thumbnails/mock_thumb.webp"
+	isPlaceholder := false
+
+	if ext == ".blend" {
+		webPath = "/placeholders/blend_placeholder.webp"
+		isPlaceholder = true
+	} else if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" {
+		webPath = "/placeholders/generic_placeholder.webp"
+		isPlaceholder = true
+	}
+
 	return ThumbnailResult{
-		WebPath: "/thumbnails/mock_thumb.webp",
+		WebPath: webPath,
 		Metadata: ImageMetadata{
 			Width:           1920,
 			Height:          1080,
@@ -146,7 +161,7 @@ func (m *MockThumbnailGenerator) Generate(ctx context.Context, sourcePath string
 			BitDepth:        8,
 			HasAlphaChannel: false,
 		},
-		IsPlaceholder: false,
+		IsPlaceholder: isPlaceholder,
 	}, nil
 }
 

@@ -93,6 +93,8 @@ export const useScanFolders = () => {
       console.log("Scan finished:", result);
       // Po skanowaniu warto odświeżyć listę folderów (np. daty ostatniego skanu)
       queryClient.invalidateQueries({ queryKey: ["scan-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["asset"] });
     },
   });
 

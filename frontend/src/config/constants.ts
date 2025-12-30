@@ -51,6 +51,6 @@ export const PRESET_COLORS = [
 export const ALLOWED_FILE_TYPES = ["model", "image", "texture", "other"];
 export const BYTES_IN_MB = 1024 * 1024;
 export const MAX_MB = 4096;
-export const API_BASE_URL = import.meta.env.DEV
+export const API_BASE_URL = (import.meta.env.DEV
   ? import.meta.env.VITE_API_URL_DEV
-  : import.meta.env.VITE_API_URL_PROD;
+  : import.meta.env.VITE_API_URL_PROD) || "";

@@ -94,17 +94,28 @@ func isSupportedImageExt(ext string) bool {
 // For other files, it returns a pre-configured placeholder.
 func (g *DiskThumbnailGenerator) Generate(ctx context.Context, srcPath string) (ThumbnailResult, error) {
 	ext := strings.ToLower(filepath.Ext(srcPath))
+
+	// 1. If it's a supported image format, try to generate a real thumbnail
 	if isSupportedImageExt(ext) {
-		return g.generateFromImage(srcPath)
+		g.logger.Debug("Generating thumbnail from image", "path", srcPath)
+		res, err := g.generateFromImage(srcPath)
+		if err == nil {
+			return res, nil
+		}
+		// If generation failed (e.g. corrupt file), log and fall back to placeholder
+		g.logger.Warn("Thumbnail generation failed, falling back to placeholder", "path", srcPath, "error", err)
 	}
-	return g.getPlaceholderResult(ext), nil
+
+	// 2. Fallback to placeholder for non-image types or failed generation
+	res := g.getPlaceholderResult(ext)
+	g.logger.Debug("Using placeholder", "path", srcPath, "placeholder", res.WebPath)
+	return res, nil
 }
 
 func (g *DiskThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailResult, error) {
 	img, err := imaging.Open(srcPath)
 	if err != nil {
-		g.logger.Warn("Failed to decode image, using placeholder", "path", srcPath, "error", err)
-		return g.getPlaceholderResult(filepath.Ext(srcPath)), nil
+		return ThumbnailResult{}, fmt.Errorf("failed to open image: %w", err)
 	}
 	originalBounds := img.Bounds()
 	hasAlphaChannel := hasAlpha(img)
@@ -123,7 +134,7 @@ func (g *DiskThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailRes
 
 	outFile, err := os.Create(fullDestPath)
 	if err != nil {
-		return ThumbnailResult{}, fmt.Errorf("nie udało się utworzyć pliku: %w", err)
+		return ThumbnailResult{}, fmt.Errorf("failed to create thumbnail file: %w", err)
 	}
 	defer outFile.Close()
 
@@ -132,7 +143,7 @@ func (g *DiskThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailRes
 		Quality:  80,
 	})
 	if err != nil {
-		return ThumbnailResult{}, fmt.Errorf("błąd encode webp: %w", err)
+		return ThumbnailResult{}, fmt.Errorf("webp encode error: %w", err)
 	}
 
 	return ThumbnailResult{

@@ -344,3 +344,45 @@ func TestScanner_Logic_NonImageFiles(t *testing.T) {
 	assert.NotEmpty(t, asset.ThumbnailPath)
 	assert.Contains(t, asset.ThumbnailPath, "blend_placeholder.webp")
 }
+
+func TestScanner_Logic_ThumbnailFailure(t *testing.T) {
+	_, queries, scanner, root := setupLogicTest(t)
+	ctx := context.Background()
+
+	// Configure mock to fail
+	scanner.thumbGen.(*MockThumbnailGenerator).ShouldFail = true
+
+	path := filepath.Join(root, "broken.png")
+	createDummyFile(t, path)
+
+	// Scan it
+	err := scanner.ScanFile(ctx, path)
+	assert.NoError(t, err) // Should NOT return error
+
+	// Verify it exists in DB even if thumbnail failed
+	asset, err := queries.GetAssetByPath(ctx, path)
+	assert.NoError(t, err)
+	assert.Equal(t, path, asset.FilePath)
+	assert.Contains(t, asset.ThumbnailPath, "generic_placeholder.webp")
+}
+
+func TestScanner_Logic_UnknownAllowedExtension(t *testing.T) {
+	_, queries, scanner, root := setupLogicTest(t)
+	ctx := context.Background()
+
+	// Allow an extension we don't have a placeholder for
+	scanner.config.SetAllowedExtensions([]string{".random"})
+
+	path := filepath.Join(root, "file.random")
+	createDummyFile(t, path)
+
+	// Scan it
+	err := scanner.ScanFile(ctx, path)
+	assert.NoError(t, err)
+
+	// Verify it exists in DB
+	asset, err := queries.GetAssetByPath(ctx, path)
+	assert.NoError(t, err)
+	assert.Equal(t, "other", asset.FileType)
+	assert.Contains(t, asset.ThumbnailPath, "generic_placeholder.webp")
+}
