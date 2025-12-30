@@ -23,18 +23,20 @@ type App struct {
 	logger             *slog.Logger
 	AssetService       *AssetService
 	MaterialSetService *MaterialSetService
+	TagService         *TagService
 	Scanner            *scanner.Scanner
 	SettingsService    *settings.SettingsService
 	Watcher            *watcher.Service
 }
 
 // NewApp creates a new App application struct with injected dependencies.
-func NewApp(db database.Querier, logger *slog.Logger, assetService *AssetService, materialSetService *MaterialSetService, scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service) *App {
+func NewApp(db database.Querier, logger *slog.Logger, assetService *AssetService, materialSetService *MaterialSetService, tagService *TagService, scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service) *App {
 	return &App{
 		db:                 db,
 		logger:             logger,
 		AssetService:       assetService,
 		MaterialSetService: materialSetService,
+		TagService:         tagService,
 		Scanner:            scanner,
 		SettingsService:    settingsService,
 		Watcher:            watcher,
@@ -47,6 +49,7 @@ func (a *App) OnStartup(ctx context.Context) {
 	a.ctx = ctx
 	a.AssetService.Startup(ctx)
 	a.MaterialSetService.Startup(ctx)
+	a.TagService.Startup(ctx)
 	a.Scanner.Startup(ctx)
 	a.SettingsService.Startup(ctx)
 	a.Watcher.Startup(ctx)

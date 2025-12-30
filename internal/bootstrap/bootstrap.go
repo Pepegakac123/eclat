@@ -131,7 +131,7 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 	materialSetService := app.NewMaterialSetService(queries, programLogger, diskThumbGen)
 	tagService := app.NewTagService(queries, programLogger)
 
-	myApp := app.NewApp(queries, programLogger, assetService, materialSetService, scannerService, settingsService, watcherService)
+	myApp := app.NewApp(queries, programLogger, assetService, materialSetService, tagService, scannerService, settingsService, watcherService)
 
 	return &Dependencies{
 		DB:                 db,
