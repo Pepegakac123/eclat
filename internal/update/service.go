@@ -116,12 +116,38 @@ func (s *UpdateService) CheckForUpdates() (ReleaseInfo, error) {
 
 		// Use download URL from the very first (latest) release
 		if downloadUrl == "" {
+			var bestAsset string
+			maxPriority := -1
+
 			for _, asset := range rel.Assets {
-				if runtime.GOOS == "windows" && (filepath.Ext(asset.Name) == ".exe" || filepath.Ext(asset.Name) == ".msi") {
-					downloadUrl = asset.BrowserDownloadUrl
-					break
+				name := strings.ToLower(asset.Name)
+				ext := filepath.Ext(name)
+
+				if runtime.GOOS == "windows" && (ext == ".exe" || ext == ".msi") {
+					priority := 0
+					// Prefer installers
+					if strings.Contains(name, "installer") || strings.Contains(name, "setup") {
+						priority += 10
+					}
+					// Prefer windows-specific names if multiple exe exist
+					if strings.Contains(name, "windows") {
+						priority += 5
+					}
+					// Match architecture
+					arch := runtime.GOARCH
+					if arch == "amd64" && (strings.Contains(name, "amd64") || strings.Contains(name, "x64")) {
+						priority += 3
+					} else if arch == "arm64" && strings.Contains(name, "arm64") {
+						priority += 3
+					}
+
+					if priority > maxPriority {
+						maxPriority = priority
+						bestAsset = asset.BrowserDownloadUrl
+					}
 				}
 			}
+			downloadUrl = bestAsset
 		}
 	}
 
@@ -157,12 +183,23 @@ func (s *UpdateService) DownloadAndInstall(url string) (string, error) {
 	fileName := fmt.Sprintf("eclat-update-%d.exe", time.Now().Unix())
 	filePath := filepath.Join(tempDir, fileName)
 
-	// 2. Download
-	resp, err := http.Get(url)
+	// 2. Download with User-Agent
+	client := &http.Client{Timeout: 5 * time.Minute}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "eclat-updater")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to download update: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("github returned non-OK status: %s", resp.Status)
+	}
 
 	out, err := os.Create(filePath)
 	if err != nil {
@@ -177,19 +214,25 @@ func (s *UpdateService) DownloadAndInstall(url string) (string, error) {
 
 	s.logger.Info("Update downloaded successfully", "path", filePath)
 
-	// 3. Execute
-	cmd := exec.Command(filePath)
-	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("failed to start installer: %w", err)
+	// 3. Execute - Use cmd /c start to detach and handle elevation properly
+	cmd := exec.Command("cmd", "/c", "start", "", filePath)
+	if err := cmd.Run(); err != nil {
+		s.logger.Error("Failed to start installer via cmd", "error", err)
+		// Fallback to direct execution
+		cmdFallback := exec.Command(filePath)
+		if err := cmdFallback.Start(); err != nil {
+			return "", fmt.Errorf("failed to start installer: %w", err)
+		}
 	}
 
 	s.logger.Info("Installer started, quitting application")
 	
 	// 4. Quit app to allow installer to overwrite
 	go func() {
-		time.Sleep(1 * time.Second)
+		// Wait a bit longer to ensure installer UI is visible
+		time.Sleep(2 * time.Second)
 		wailsRuntime.Quit(s.ctx)
 	}()
 
-	return "Installing... Application will close.", nil
+	return "Installing... Application will close shortly.", nil
 }

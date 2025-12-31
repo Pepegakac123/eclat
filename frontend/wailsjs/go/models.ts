@@ -111,6 +111,7 @@ export namespace app {
 	    isDeleted: boolean;
 	    isHidden: boolean;
 	    collectionId?: number;
+	    showRepresentativesOnly: boolean;
 	    sortOption: string;
 	    sortDesc: boolean;
 	
@@ -138,6 +139,7 @@ export namespace app {
 	        this.isDeleted = source["isDeleted"];
 	        this.isHidden = source["isHidden"];
 	        this.collectionId = source["collectionId"];
+	        this.showRepresentativesOnly = source["showRepresentativesOnly"];
 	        this.sortOption = source["sortOption"];
 	        this.sortDesc = source["sortDesc"];
 	    }
