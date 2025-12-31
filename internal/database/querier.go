@@ -13,6 +13,7 @@ type Querier interface {
 	AddAssetToMaterialSet(ctx context.Context, arg AddAssetToMaterialSetParams) error
 	AddTagToAsset(ctx context.Context, arg AddTagToAssetParams) error
 	ClaimAssetsForPath(ctx context.Context, arg ClaimAssetsForPathParams) error
+	CleanupOldDeletedAssets(ctx context.Context) error
 	ClearTagsForAsset(ctx context.Context, assetID int64) error
 	CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset, error)
 	CreateMaterialSet(ctx context.Context, arg CreateMaterialSetParams) (MaterialSet, error)

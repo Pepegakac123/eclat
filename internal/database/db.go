@@ -33,6 +33,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.claimAssetsForPathStmt, err = db.PrepareContext(ctx, claimAssetsForPath); err != nil {
 		return nil, fmt.Errorf("error preparing query ClaimAssetsForPath: %w", err)
 	}
+	if q.cleanupOldDeletedAssetsStmt, err = db.PrepareContext(ctx, cleanupOldDeletedAssets); err != nil {
+		return nil, fmt.Errorf("error preparing query CleanupOldDeletedAssets: %w", err)
+	}
 	if q.clearTagsForAssetStmt, err = db.PrepareContext(ctx, clearTagsForAsset); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearTagsForAsset: %w", err)
 	}
@@ -237,6 +240,11 @@ func (q *Queries) Close() error {
 	if q.claimAssetsForPathStmt != nil {
 		if cerr := q.claimAssetsForPathStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing claimAssetsForPathStmt: %w", cerr)
+		}
+	}
+	if q.cleanupOldDeletedAssetsStmt != nil {
+		if cerr := q.cleanupOldDeletedAssetsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing cleanupOldDeletedAssetsStmt: %w", cerr)
 		}
 	}
 	if q.clearTagsForAssetStmt != nil {
@@ -591,6 +599,7 @@ type Queries struct {
 	addAssetToMaterialSetStmt           *sql.Stmt
 	addTagToAssetStmt                   *sql.Stmt
 	claimAssetsForPathStmt              *sql.Stmt
+	cleanupOldDeletedAssetsStmt         *sql.Stmt
 	clearTagsForAssetStmt               *sql.Stmt
 	createAssetStmt                     *sql.Stmt
 	createMaterialSetStmt               *sql.Stmt
@@ -662,6 +671,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		addAssetToMaterialSetStmt:           q.addAssetToMaterialSetStmt,
 		addTagToAssetStmt:                   q.addTagToAssetStmt,
 		claimAssetsForPathStmt:              q.claimAssetsForPathStmt,
+		cleanupOldDeletedAssetsStmt:         q.cleanupOldDeletedAssetsStmt,
 		clearTagsForAssetStmt:               q.clearTagsForAssetStmt,
 		createAssetStmt:                     q.createAssetStmt,
 		createMaterialSetStmt:               q.createMaterialSetStmt,

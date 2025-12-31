@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"eclat/internal/app"
 	"eclat/internal/config"
@@ -90,7 +91,8 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 	}
 
 	// 2. Setup Logger
-	logFilePath := filepath.Join(logsFolder, "app.log")
+	currentTime := time.Now().Format("2006-01-02")
+	logFilePath := filepath.Join(logsFolder, fmt.Sprintf("app-%s.log", currentTime))
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
@@ -164,6 +166,9 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 
 	myApp := app.NewApp(queries, programLogger, assetService, materialSetService, tagService, scannerService, settingsService, watcherService, updateService)
 
+	// 7. Cleanup Old Data (Logs and Soft-Deleted Assets older than 7 days)
+	cleanupOldData(logsFolder, queries, programLogger)
+
 	return &Dependencies{
 		DB:                 db,
 		LogFile:            logFile,
@@ -178,4 +183,39 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 		UpdateService:      updateService,
 		ThumbnailsDir:      thumbsFolder,
 	}, nil
+}
+
+// cleanupOldData removes log files and database entries that are older than 7 days.
+func cleanupOldData(logsFolder string, queries *database.Queries, logger *slog.Logger) {
+	// 1. Cleanup Logs older than 7 days
+	files, err := os.ReadDir(logsFolder)
+	if err == nil {
+		now := time.Now()
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+			info, err := file.Info()
+			if err != nil {
+				continue
+			}
+			// Delete if older than 7 days
+			if now.Sub(info.ModTime()) > 7*24*time.Hour {
+				err := os.Remove(filepath.Join(logsFolder, file.Name()))
+				if err == nil {
+					logger.Info("🗑️ Deleted old log file", "name", file.Name())
+				}
+			}
+		}
+	}
+
+	// 2. Cleanup Old Deleted Assets (Database entries)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := queries.CleanupOldDeletedAssets(ctx); err != nil {
+		logger.Error("❌ Failed to cleanup old deleted assets", "error", err)
+	} else {
+		logger.Info("🧹 Successfully cleaned up old deleted assets (older than 7 days)")
+	}
 }

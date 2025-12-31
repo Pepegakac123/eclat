@@ -245,3 +245,7 @@ RETURNING *;
 UPDATE assets
 SET file_type = ?
 WHERE id = ?;
+
+-- name: CleanupOldDeletedAssets :exec
+DELETE FROM assets
+WHERE is_deleted = 1 AND deleted_at < datetime('now', '-7 days');

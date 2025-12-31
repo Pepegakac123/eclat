@@ -30,6 +30,16 @@ func (q *Queries) ClaimAssetsForPath(ctx context.Context, arg ClaimAssetsForPath
 	return err
 }
 
+const cleanupOldDeletedAssets = `-- name: CleanupOldDeletedAssets :exec
+DELETE FROM assets
+WHERE is_deleted = 1 AND deleted_at < datetime('now', '-7 days')
+`
+
+func (q *Queries) CleanupOldDeletedAssets(ctx context.Context) error {
+	_, err := q.exec(ctx, q.cleanupOldDeletedAssetsStmt, cleanupOldDeletedAssets)
+	return err
+}
+
 const createAsset = `-- name: CreateAsset :one
 INSERT INTO assets (
     scan_folder_id, file_name, file_path, file_type, file_size,
