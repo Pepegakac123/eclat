@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"eclat/internal/database"
+	"eclat/internal/feedback"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -22,14 +23,16 @@ type AssetService struct {
 	db            database.Querier
 	sysDB         *sql.DB
 	logger        *slog.Logger
+	notifier      feedback.Notifier
 	thumbnailsDir string
 }
 
-func NewAssetService(db database.Querier, sysDB *sql.DB, logger *slog.Logger, thumbnailsDir string) *AssetService {
+func NewAssetService(db database.Querier, sysDB *sql.DB, logger *slog.Logger, notifier feedback.Notifier, thumbnailsDir string) *AssetService {
 	return &AssetService{
 		db:            db,
 		sysDB:         sysDB,
 		logger:        logger,
+		notifier:      notifier,
 		thumbnailsDir: thumbnailsDir,
 	}
 }
@@ -829,6 +832,7 @@ func (s *AssetService) DeleteAssetsPermanently(ids []int64) error {
 			return err
 		}
 	}
+	s.notifier.EmitAssetsChanged(s.ctx)
 	return nil
 }
 

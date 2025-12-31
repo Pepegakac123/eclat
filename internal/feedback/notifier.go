@@ -52,16 +52,25 @@ type WailsNotifier struct{}
 
 // SendToast emits a "toast" event to the frontend.
 func (n *WailsNotifier) SendToast(ctx context.Context, msg ToastField) {
+	if ctx == nil {
+		return
+	}
 	runtime.EventsEmit(ctx, "toast", msg)
 }
 
 // SendScannerStatus emits a "scan_status" event to the frontend.
 func (n *WailsNotifier) SendScannerStatus(ctx context.Context, status Status) {
+	if ctx == nil {
+		return
+	}
 	runtime.EventsEmit(ctx, "scan_status", string(status))
 }
 
 // SendScanProgress emits a "scan_progress" event to the frontend.
 func (n *WailsNotifier) SendScanProgress(ctx context.Context, current, total int, lastFile string) {
+	if ctx == nil {
+		return
+	}
 	payload := ScanProgressDTO{
 		Current:  current,
 		Total:    total,
@@ -72,5 +81,8 @@ func (n *WailsNotifier) SendScanProgress(ctx context.Context, current, total int
 
 // EmitAssetsChanged emits an "assets:changed" event to trigger a frontend refresh.
 func (n *WailsNotifier) EmitAssetsChanged(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
 	runtime.EventsEmit(ctx, "assets:changed", "refresh")
 }

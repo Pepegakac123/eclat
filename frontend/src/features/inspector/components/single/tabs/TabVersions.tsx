@@ -69,6 +69,8 @@ export const TabVersions = ({ asset }: TabVersionsProps) => {
       });
       queryClient.invalidateQueries({ queryKey: ["asset-versions", asset.id] });
       queryClient.invalidateQueries({ queryKey: ["assets"] });
+      queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["library-stats"] });
       setDeleteModalOpen(false);
     } catch (err) {
       console.error(err);

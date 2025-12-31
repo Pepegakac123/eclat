@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"eclat/internal/database"
+	"eclat/internal/feedback"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -44,9 +45,32 @@ func setupTestDB(t *testing.T) (*sql.DB, database.Querier) {
 func setupAssetServiceTest(t *testing.T) (*AssetService, database.Querier) {
 	sysDB, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := NewAssetService(queries, sysDB, logger, "/tmp")
+	notifier := &MockNotifier{}
+	service := NewAssetService(queries, sysDB, logger, notifier, "/tmp")
 	service.Startup(context.Background())
 	return service, queries
+}
+
+type MockNotifier struct {
+	LastMsg   feedback.ToastField
+	CallCount int
+}
+
+func (m *MockNotifier) SendToast(ctx context.Context, msg feedback.ToastField) {
+	m.LastMsg = msg
+	m.CallCount++
+}
+
+func (m *MockNotifier) SendScannerStatus(ctx context.Context, status feedback.Status) {
+	m.CallCount++
+}
+
+func (m *MockNotifier) SendScanProgress(ctx context.Context, current, total int, lastFile string) {
+	m.CallCount++
+}
+
+func (m *MockNotifier) EmitAssetsChanged(ctx context.Context) {
+	m.CallCount++
 }
 
 // insertTestAsset creates a dummy asset in the database.
