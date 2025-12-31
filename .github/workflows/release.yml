@@ -59,13 +59,17 @@ jobs:
       - name: Install NSIS
         if: matrix.os == 'windows-latest'
         shell: powershell
-        run: choco install nsis
+        run: |
+          choco install nsis
+          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
       - name: Build App
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             wails build -platform ${{ matrix.platform }} -nsis
+          elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            wails build -platform ${{ matrix.platform }} -tags webkit2_41
           else
             wails build -platform ${{ matrix.platform }}
           fi
