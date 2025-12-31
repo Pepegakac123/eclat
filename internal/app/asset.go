@@ -931,9 +931,14 @@ func (s *AssetService) GetAssetVersions(assetId int64) ([]AssetDetails, error) {
 	var results []AssetDetails
 	for _, sib := range siblings {
 		results = append(results, AssetDetails{
-			ID:       sib.ID,
-			FileName: sib.FileName,
-			FilePath: sib.FilePath,
+			ID:            sib.ID,
+			FileName:      sib.FileName,
+			FilePath:      sib.FilePath,
+			FileType:      sib.FileType,
+			FileSize:      sib.FileSize,
+			LastModified:  sib.LastModified,
+			FileHash:      sib.FileHash.String,
+			ThumbnailPath: sib.ThumbnailPath,
 		})
 	}
 	return results, nil

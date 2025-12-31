@@ -319,15 +319,21 @@ func (q *Queries) GetAssetByPath(ctx context.Context, filePath string) (Asset, e
 }
 
 const getAssetsByGroupID = `-- name: GetAssetsByGroupID :many
-SELECT id, file_name, file_path
+SELECT id, file_name, file_path, file_type, file_size, last_modified, file_hash, thumbnail_path
 FROM assets
 WHERE group_id = ? AND is_deleted = 0
+ORDER BY last_modified DESC
 `
 
 type GetAssetsByGroupIDRow struct {
-	ID       int64  `json:"id"`
-	FileName string `json:"fileName"`
-	FilePath string `json:"filePath"`
+	ID            int64          `json:"id"`
+	FileName      string         `json:"fileName"`
+	FilePath      string         `json:"filePath"`
+	FileType      string         `json:"fileType"`
+	FileSize      int64          `json:"fileSize"`
+	LastModified  time.Time      `json:"lastModified"`
+	FileHash      sql.NullString `json:"fileHash"`
+	ThumbnailPath string         `json:"thumbnailPath"`
 }
 
 func (q *Queries) GetAssetsByGroupID(ctx context.Context, groupID string) ([]GetAssetsByGroupIDRow, error) {
@@ -339,7 +345,16 @@ func (q *Queries) GetAssetsByGroupID(ctx context.Context, groupID string) ([]Get
 	var items []GetAssetsByGroupIDRow
 	for rows.Next() {
 		var i GetAssetsByGroupIDRow
-		if err := rows.Scan(&i.ID, &i.FileName, &i.FilePath); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.FileName,
+			&i.FilePath,
+			&i.FileType,
+			&i.FileSize,
+			&i.LastModified,
+			&i.FileHash,
+			&i.ThumbnailPath,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -230,9 +230,10 @@ SET last_scanned = ?
 WHERE scan_folder_id = ? AND is_deleted = 0;
 
 -- name: GetAssetsByGroupID :many
-SELECT id, file_name, file_path
+SELECT id, file_name, file_path, file_type, file_size, last_modified, file_hash, thumbnail_path
 FROM assets
-WHERE group_id = ? AND is_deleted = 0;
+WHERE group_id = ? AND is_deleted = 0
+ORDER BY last_modified DESC;
 
 -- name: RenameAsset :one
 UPDATE assets

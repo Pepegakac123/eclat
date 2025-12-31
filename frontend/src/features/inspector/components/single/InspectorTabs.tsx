@@ -33,7 +33,7 @@ export const InspectorTabs = ({ asset }: { asset: app.AssetDetails }) => {
           <TabCollections asset={asset} />
         </Tab>
         <Tab key="versions" title="Versions">
-          <TabVersions />
+          <TabVersions asset={asset} />
         </Tab>
       </Tabs>
     </div>
