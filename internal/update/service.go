@@ -144,8 +144,13 @@ func (s *UpdateService) CheckForUpdates() (ReleaseInfo, error) {
 					if priority > maxPriority {
 						maxPriority = priority
 						bestAsset = asset.BrowserDownloadUrl
+						s.logger.Debug("Found better asset candidate", "name", asset.Name, "priority", priority)
 					}
 				}
+			}
+			
+			if bestAsset != "" {
+				s.logger.Info("Selected specific asset for update", "version", rel.TagName, "url", bestAsset)
 			}
 			downloadUrl = bestAsset
 		}
@@ -176,12 +181,22 @@ func (s *UpdateService) DownloadAndInstall(url string) (string, error) {
 		return "Opened download page in browser.", nil
 	}
 
+	// Safety Check: URL Extension
+	// If the URL doesn't look like an installer, don't try to download and run it blindly.
+	urlLower := strings.ToLower(url)
+	if !strings.HasSuffix(urlLower, ".exe") && !strings.HasSuffix(urlLower, ".msi") {
+		s.logger.Warn("Update URL does not point to an executable, opening in browser", "url", url)
+		wailsRuntime.BrowserOpenURL(s.ctx, url)
+		return "Opened download page in browser.", nil
+	}
+
 	s.logger.Info("Starting Windows update download", "url", url)
-	
+
 	// 1. Create temp file
 	tempDir := os.TempDir()
 	fileName := fmt.Sprintf("eclat-update-%d.exe", time.Now().Unix())
 	filePath := filepath.Join(tempDir, fileName)
+	s.logger.Debug("Temporary update file path prepared", "path", filePath)
 
 	// 2. Download with User-Agent
 	client := &http.Client{Timeout: 5 * time.Minute}
@@ -197,8 +212,19 @@ func (s *UpdateService) DownloadAndInstall(url string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	s.logger.Debug("Update response headers received", "status", resp.Status, "content_length", resp.ContentLength)
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("github returned non-OK status: %s", resp.Status)
+	}
+
+	// Content Verification
+	// If the server returns HTML (e.g., 404 page or release page instead of file), abort.
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(strings.ToLower(contentType), "text/html") {
+		s.logger.Warn("Update URL returned HTML content (likely a webpage, not a binary), opening in browser", "url", url, "content_type", contentType)
+		wailsRuntime.BrowserOpenURL(s.ctx, url)
+		return "Opened download page in browser.", nil
 	}
 
 	out, err := os.Create(filePath)
@@ -214,23 +240,23 @@ func (s *UpdateService) DownloadAndInstall(url string) (string, error) {
 
 	s.logger.Info("Update downloaded successfully", "path", filePath)
 
-	// 3. Execute - Use cmd /c start to detach and handle elevation properly
-	cmd := exec.Command("cmd", "/c", "start", "", filePath)
-	if err := cmd.Run(); err != nil {
-		s.logger.Error("Failed to start installer via cmd", "error", err)
-		// Fallback to direct execution
-		cmdFallback := exec.Command(filePath)
-		if err := cmdFallback.Start(); err != nil {
-			return "", fmt.Errorf("failed to start installer: %w", err)
-		}
+	// 3. Execute - Direct execution
+	// Use exec.Command(filePath).Start() to run the executable directly.
+	// This avoids "cmd /c start" issues and allows the installer to run independently.
+	s.logger.Info("Attempting to execute installer directly", "path", filePath)
+	cmd := exec.Command(filePath)
+	if err := cmd.Start(); err != nil {
+		s.logger.Error("Failed to start installer directly", "error", err)
+		return "", fmt.Errorf("failed to start installer: %w", err)
 	}
 
-	s.logger.Info("Installer started, quitting application")
-	
+	s.logger.Info("Installer started successfully, quitting application")
+
 	// 4. Quit app to allow installer to overwrite
 	go func() {
-		// Wait a bit longer to ensure installer UI is visible
-		time.Sleep(2 * time.Second)
+		// Wait a bit to ensure installer process has time to initialize if needed,
+		// though Start() returns as soon as the process starts.
+		time.Sleep(1 * time.Second)
 		wailsRuntime.Quit(s.ctx)
 	}()
 

@@ -41,6 +41,21 @@ func (w *syncedWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
+// safeStdoutWriter attempts to write to stdout but swallows errors if the pipe is closed
+// (common in Windows GUI apps).
+type safeStdoutWriter struct{}
+
+func (w *safeStdoutWriter) Write(p []byte) (n int, err error) {
+	n, err = os.Stdout.Write(p)
+	if err != nil {
+		// If stdout fails (e.g., closed pipe), we ignore the error so that the logger
+		// doesn't think the write failed entirely. We return len(p) to pretend
+		// the write was successful.
+		return len(p), nil
+	}
+	return n, nil
+}
+
 // Dependencies holds all the initialized services and resources required by the application.
 type Dependencies struct {
 	DB                 *sql.DB
@@ -100,7 +115,9 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
 
-	multiWriter := io.MultiWriter(os.Stdout, &syncedWriter{f: logFile})
+	// Use safeStdoutWriter to prevent crashes/logs loss if stdout is closed (Windows GUI).
+	// File writer comes FIRST to ensure we capture logs even if stdout logic has issues.
+	multiWriter := io.MultiWriter(&syncedWriter{f: logFile}, &safeStdoutWriter{})
 	programLogger := slog.New(slog.NewTextHandler(multiWriter, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
