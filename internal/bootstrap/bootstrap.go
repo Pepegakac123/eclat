@@ -18,6 +18,7 @@ import (
 	"eclat/internal/feedback"
 	"eclat/internal/scanner"
 	"eclat/internal/settings"
+	"eclat/internal/update"
 	"eclat/internal/watcher"
 
 	"github.com/pressly/goose/v3"
@@ -35,12 +36,16 @@ type Dependencies struct {
 	ScannerService     *scanner.Scanner
 	SettingsService    *settings.SettingsService
 	WatcherService     *watcher.Service
+	UpdateService      *update.UpdateService
 	ThumbnailsDir      string
 }
 
 // Initialize performs the startup sequence: configuring directories, logger, database, and services.
 func Initialize(migrations embed.FS) (*Dependencies, error) {
 	// 1. Setup Directories
+	// Note: We use UserCacheDir for the database and logs as it's standard for application data 
+	// that doesn't need to be backed up by the system, and it ensures data persists across updates
+	// because it's stored in the user profile, not the application installation directory.
 	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return nil, fmt.Errorf("cannot get cache dir: %w", err)
@@ -130,8 +135,9 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 	assetService := app.NewAssetService(queries, db, programLogger, notifier, thumbsFolder)
 	materialSetService := app.NewMaterialSetService(queries, programLogger, diskThumbGen)
 	tagService := app.NewTagService(queries, programLogger)
+	updateService := update.NewUpdateService(programLogger)
 
-	myApp := app.NewApp(queries, programLogger, assetService, materialSetService, tagService, scannerService, settingsService, watcherService)
+	myApp := app.NewApp(queries, programLogger, assetService, materialSetService, tagService, scannerService, settingsService, watcherService, updateService)
 
 	return &Dependencies{
 		DB:                 db,
@@ -143,6 +149,7 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 		ScannerService:     scannerService,
 		SettingsService:    settingsService,
 		WatcherService:     watcherService,
+		UpdateService:      updateService,
 		ThumbnailsDir:      thumbsFolder,
 	}, nil
 }

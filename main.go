@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"eclat/internal/app"
 	"eclat/internal/bootstrap"
+	"eclat/internal/version"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -34,7 +34,7 @@ func main() {
 
 	// Run Wails application
 	err = wails.Run(&options.App{
-		Title:            "Eclat v" + app.Version,
+		Title:            "Eclat v" + version.Version,
 		WindowStartState: options.Maximised,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
@@ -76,6 +76,7 @@ func main() {
 			deps.ScannerService,
 			deps.SettingsService,
 			deps.WatcherService,
+			deps.UpdateService,
 		},
 	})
 
