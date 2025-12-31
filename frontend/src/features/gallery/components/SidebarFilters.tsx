@@ -14,7 +14,6 @@ import { useGalleryStore } from "@/features/gallery/stores/useGalleryStore";
 import { useShallow } from "zustand/react/shallow";
 import { ALLOWED_FILE_TYPES, UI_CONFIG } from "@/config/constants";
 import { Slider } from "@heroui/slider";
-import { PRESET_COLORS } from "@/config/constants";
 import { useEffect, useState } from "react";
 import { Input } from "@heroui/input";
 import { Accordion, AccordionItem } from "@heroui/accordion";
@@ -38,7 +37,7 @@ export const SidebarFilters = () => {
     Array.isArray(avaliableColors) &&
     avaliableColors.length > 0
       ? avaliableColors
-      : PRESET_COLORS;
+      : [];
   const toggleColor = (color: string) => {
     const currentColors = filters.colors || [];
     const newColors = currentColors.includes(color)

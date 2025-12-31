@@ -12,6 +12,7 @@ export const useAssetEvents = () => {
       queryClient.invalidateQueries({ queryKey: ["sidebar-stats"] });
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["library-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["colors"] });
     });
 
     const cleanupStatus = EventsOn("scan_status", (status) => {
