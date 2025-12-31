@@ -78,6 +78,11 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 }
 
+// GetAppVersion returns the current version of the application.
+func (a *App) GetAppVersion() string {
+	return Version
+}
+
 // OpenInExplorer opens the file explorer and selects the file at the given path.
 func (a *App) OpenInExplorer(path string) error {
 	a.logger.Info("Opening in explorer", "path", path)
