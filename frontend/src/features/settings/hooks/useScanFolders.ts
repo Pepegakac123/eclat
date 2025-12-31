@@ -2,7 +2,7 @@ import { addToast } from "@heroui/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AddExtensions,
-	GetConfig,
+	GetConfig as GetScannerConfig,
 	GetPredefinedPalette,
 	RemoveExtension,
 	StartScan,
@@ -10,9 +10,11 @@ import {
 import {
 	AddFolder,
 	DeleteFolder,
+	GetConfig as GetSettingsConfig,
 	GetFolders,
 	OpenFolderPicker,
 	OpenInExplorer,
+	SetDebugMode,
 	UpdateFolderStatus,
 	ValidatePath,
 } from "@wailsjs/go/settings/SettingsService";
@@ -24,6 +26,23 @@ export const useScanFolders = () => {
 		queryKey: ["scan-folders"],
 		queryFn: GetFolders,
 		refetchOnWindowFocus: true,
+	});
+
+	const configQuery = useQuery({
+		queryKey: ["app-config"],
+		queryFn: GetSettingsConfig,
+	});
+
+	const setDebugModeMutation = useMutation({
+		mutationFn: SetDebugMode,
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["app-config"] });
+			addToast({
+				title: "Settings Updated",
+				description: "Debug mode has been updated.",
+				color: "success",
+			});
+		},
 	});
 
 	const addFolderMutation = useMutation({
@@ -98,7 +117,7 @@ export const useScanFolders = () => {
 
 	const extensionsQuery = useQuery({
 		queryKey: ["allowed-extensions"],
-		queryFn: async () => (await GetConfig()).allowedExtensions || [],
+		queryFn: async () => (await GetScannerConfig()).allowedExtensions || [],
 	});
 
 	const addExtensionMutation = useMutation({
@@ -161,6 +180,11 @@ export const useScanFolders = () => {
 		addFolder: addFolderMutation.mutateAsync,
 		deleteFolder: deleteFolderMutation.mutateAsync,
 		updateFolderStatus: updateStatusMutation.mutateAsync,
+
+		// --- Config & Advanced ---
+		appConfig: configQuery.data,
+		setDebugMode: setDebugModeMutation.mutate,
+		isUpdatingConfig: setDebugModeMutation.isPending,
 
 		// --- Helpers ---
 		validatePath: validatePathWrapper,

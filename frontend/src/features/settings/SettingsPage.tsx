@@ -1,3 +1,4 @@
+import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Chip } from "@heroui/chip";
@@ -55,6 +56,8 @@ export default function SettingsPage() {
 		addExtension,
 		removeExtension,
 		openInExplorer,
+		appConfig,
+		setDebugMode,
 	} = useScanFolders();
 
 	const {
@@ -460,7 +463,45 @@ export default function SettingsPage() {
 				</Card>
 			</div>
 
-			{/* SEKCJA 5: ABOUT */}
+			{/* SEKCJA 5: ADVANCED SETTINGS */}
+			<div className="space-y-4">
+				<h2 className="text-2xl font-bold text-danger">Advanced</h2>
+				<Accordion
+					variant="splitted"
+					className="px-0"
+					itemClasses={{
+						base: "bg-content1 border border-default-100",
+						title: "text-medium font-semibold",
+						trigger: "px-4",
+					}}
+				>
+					<AccordionItem
+						key="advanced"
+						aria-label="Advanced System Settings"
+						title="Developer & Debug Settings"
+						subtitle="Only for troubleshooting"
+					>
+						<div className="p-2 space-y-6">
+							<div className="flex items-center justify-between">
+								<div className="flex flex-col gap-1">
+									<span className="text-medium font-medium">Debug Mode</span>
+									<p className="text-tiny text-default-400">
+										Enable detailed logging for troubleshooting scanner and
+										matcher issues.
+									</p>
+								</div>
+								<Switch
+									isSelected={appConfig?.debugMode}
+									onValueChange={setDebugMode}
+									color="danger"
+								/>
+							</div>
+						</div>
+					</AccordionItem>
+				</Accordion>
+			</div>
+
+			{/* SEKCJA 6: ABOUT */}
 			<div className="pt-8 border-t border-default-100 flex flex-col gap-4">
 				<div className="flex justify-between items-end">
 					<div className="space-y-1">

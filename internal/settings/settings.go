@@ -34,6 +34,7 @@ type ScanFolderDTO struct {
 type AppConfigDTO struct {
 	AllowedExtensions    []string `json:"allowedExtensions"`
 	MaxAllowHashFileSize int64    `json:"maxAllowHashFileSize"`
+	DebugMode            bool     `json:"debugMode"`
 }
 
 // WailsRuntime is an interface wrapper around Wails runtime methods to facilitate testing.
@@ -56,12 +57,14 @@ type FolderWatcher interface {
 
 // KeyAllowedExtensions is the database key for storing allowed file extensions.
 const KeyAllowedExtensions = "allowed_extensions"
+const KeyDebugMode = "debug_mode"
 
 // SettingsService manages application configuration, scan folders, and system integration.
 type SettingsService struct {
 	ctx      context.Context
 	db       database.Querier
 	logger   *slog.Logger
+	logLevel *slog.LevelVar
 	config   *config.ScannerConfig
 	notifier feedback.Notifier
 	wails    WailsRuntime
@@ -69,10 +72,11 @@ type SettingsService struct {
 }
 
 // NewSettingsService creates a new instance of SettingsService.
-func NewSettingsService(db database.Querier, logger *slog.Logger, notifier feedback.Notifier, watcher FolderWatcher, cfg *config.ScannerConfig) *SettingsService {
+func NewSettingsService(db database.Querier, logger *slog.Logger, logLevel *slog.LevelVar, notifier feedback.Notifier, watcher FolderWatcher, cfg *config.ScannerConfig) *SettingsService {
 	return &SettingsService{
 		db:       db,
 		logger:   logger,
+		logLevel: logLevel,
 		notifier: notifier,
 		config:   cfg,
 		wails:    &RealWailsRuntime{},
@@ -93,7 +97,35 @@ func (s *SettingsService) GetConfig() AppConfigDTO {
 	return AppConfigDTO{
 		AllowedExtensions:    s.config.GetAllowedExtensions(),
 		MaxAllowHashFileSize: s.config.GetMaxHashFileSize(),
+		DebugMode:            s.logLevel.Level() == slog.LevelDebug,
 	}
+}
+
+// SetDebugMode toggles the debug logging level and persists the setting.
+func (s *SettingsService) SetDebugMode(enabled bool) error {
+	level := slog.LevelInfo
+	if enabled {
+		level = slog.LevelDebug
+	}
+	s.logLevel.Set(level)
+
+	val := "false"
+	if enabled {
+		val = "true"
+	}
+
+	err := s.db.SetSystemSetting(s.ctx, database.SetSystemSettingParams{
+		Key:   KeyDebugMode,
+		Value: val,
+	})
+
+	if err != nil {
+		s.logger.Error("Failed to persist debug mode to DB", "error", err)
+		return err
+	}
+
+	s.logger.Info("Debug mode changed", "enabled", enabled)
+	return nil
 }
 
 // SetAllowedExtensions updates the list of allowed file extensions in memory and persists it to the database.

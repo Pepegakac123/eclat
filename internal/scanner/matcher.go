@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"eclat/internal/database"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -28,24 +29,36 @@ var leadingNumber = regexp.MustCompile(`(?i)^\d+[._ -]+`)
 // getBaseName strips version suffixes from a filename to determine its canonical "base" name.
 // It iteratively applies regex patterns until the name stabilizes.
 func (s *Scanner) getBaseName(filename string) string {
-	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
 	base = strings.ToLower(base)
+
+	s.logger.Debug("🧠 getBaseName: starting", "file", filename, "ext", ext, "initial_base", base)
 
 	for {
 		original := base
 		// Strip leading numbers
 		base = leadingNumber.ReplaceAllString(base, "")
+		if base != original {
+			s.logger.Debug("🧠 getBaseName: stripped leading numbers", "from", original, "to", base)
+		}
 
 		// Strip version suffixes
 		for _, re := range versionSuffixes {
-			base = re.ReplaceAllString(base, "")
+			stripped := re.ReplaceAllString(base, "")
+			if stripped != base {
+				s.logger.Debug("🧠 getBaseName: stripped suffix", "re", re.String(), "from", base, "to", stripped)
+				base = stripped
+			}
 		}
+
 		if base == original {
 			break
 		}
 		base = strings.TrimSpace(base)
 	}
 
+	s.logger.Debug("🧠 getBaseName: final", "file", filename, "base", base)
 	return base
 }
 
@@ -56,13 +69,27 @@ func (s *Scanner) TryHeuristicMatch(ctx context.Context, folderID int64, filenam
 	baseName := s.getBaseName(filename)
 
 	if len(baseName) < 3 {
+		s.logger.Debug("🧠 Heuristic match: base name too short", "file", filename, "base", baseName)
 		return "", false
 	}
 
+	// 1. Check Session Cache (In-memory grouping for files in the current scan)
+	s.sessionMu.Lock()
+	cacheKey := fmt.Sprintf("%d:%s", folderID, baseName)
+	if cachedGroupID, ok := s.sessionHeuristicCache[cacheKey]; ok {
+		s.sessionMu.Unlock()
+		s.logger.Debug("🧠 Heuristic match: SUCCESS (Session Cache)", "file", filename, "base", baseName, "group_id", cachedGroupID)
+		return cachedGroupID, true
+	}
+	s.sessionMu.Unlock()
+
+	// 2. Check DB (Previously indexed files)
 	// Ask DB for candidates in the same folder matching "%BaseName%"
 	// Using % at the beginning allows matching files that might have leading numbers or prefixes 
 	// that our getBaseName strips. We then verify the match in Go logic.
 	pattern := "%" + baseName + "%"
+	s.logger.Debug("🧠 Heuristic match: looking for siblings in DB", "file", filename, "base", baseName, "pattern", pattern)
+
 	candidates, err := s.db.FindPotentialSiblings(ctx, database.FindPotentialSiblingsParams{
 		ScanFolderID: sql.NullInt64{Int64: folderID, Valid: true},
 		FileName:     pattern,
@@ -75,15 +102,20 @@ func (s *Scanner) TryHeuristicMatch(ctx context.Context, folderID int64, filenam
 		return "", false
 	}
 
+	s.logger.Debug("🧠 Heuristic match: DB returned candidates", "count", len(candidates))
+
 	// Verify candidates: SQL LIKE is loose, so we verify if candidates
 	// actually reduce to the exact same base name.
 	for _, cand := range candidates {
 		candidateBase := s.getBaseName(cand.FileName)
+		s.logger.Debug("🧠 Heuristic match: checking candidate", "file", cand.FileName, "candidate_base", candidateBase, "target_base", baseName)
 
 		if candidateBase == baseName {
+			s.logger.Debug("🧠 Heuristic match: SUCCESS", "file", filename, "matched_with", cand.FileName, "group_id", cand.GroupID)
 			return cand.GroupID, true
 		}
 	}
 
+	s.logger.Debug("🧠 Heuristic match: NO MATCH found", "file", filename, "base", baseName)
 	return "", false
 }

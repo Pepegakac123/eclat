@@ -560,6 +560,7 @@ export namespace settings {
 	export class AppConfigDTO {
 	    allowedExtensions: string[];
 	    maxAllowHashFileSize: number;
+	    debugMode: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppConfigDTO(source);
@@ -569,6 +570,7 @@ export namespace settings {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.allowedExtensions = source["allowedExtensions"];
 	        this.maxAllowHashFileSize = source["maxAllowHashFileSize"];
+	        this.debugMode = source["debugMode"];
 	    }
 	}
 	export class ScanFolderDTO {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"eclat/internal/database"
+	"io"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -58,7 +60,9 @@ func TestUnit_GetBaseName(t *testing.T) {
 	}
 
 	// Ponieważ getBaseName jest metodą Scannera, potrzebujemy pustej instancji
-	s := &Scanner{}
+	s := &Scanner{
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

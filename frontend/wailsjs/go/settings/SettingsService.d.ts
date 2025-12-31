@@ -19,6 +19,8 @@ export function OpenInExplorer(arg1:string):Promise<void>;
 
 export function SetAllowedExtensions(arg1:Array<string>):Promise<void>;
 
+export function SetDebugMode(arg1:boolean):Promise<void>;
+
 export function Startup(arg1:context.Context):Promise<void>;
 
 export function UpdateFolderStatus(arg1:number,arg2:boolean):Promise<settings.ScanFolderDTO>;
