@@ -70,6 +70,7 @@ export const GalleryGrid = ({ mode }: GalleryGridProps) => {
       isDeleted: false, // Override in useAssets based on mode
       isHidden: false,
       collectionId: parsedCollectionId,
+      showRepresentativesOnly: filters.showRepresentativesOnly,
       sortOption: sortOption,
       sortDesc: sortDesc,
     });

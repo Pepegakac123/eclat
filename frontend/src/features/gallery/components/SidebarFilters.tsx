@@ -431,6 +431,30 @@ export const SidebarFilters = () => {
                 }}
               />
             </div>
+
+            <Divider className="my-3 opacity-50" />
+
+            {/* --- GROUP VERSIONS --- */}
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2 text-default-500">
+                <Layers size={14} />
+                <span className="text-tiny font-medium text-default-600">
+                  Group Versions
+                </span>
+              </div>
+
+              <Switch
+                size="sm"
+                color="primary"
+                isSelected={filters.showRepresentativesOnly}
+                onValueChange={(val) =>
+                  setFilters({ showRepresentativesOnly: val })
+                }
+                classNames={{
+                  wrapper: "group-data-[selected=true]:bg-primary",
+                }}
+              />
+            </div>
           </div>
         </AccordionItem>
       </Accordion>

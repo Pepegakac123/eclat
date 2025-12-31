@@ -191,6 +191,7 @@ type AssetQueryFilters struct {
 	IsDeleted         bool   `json:"isDeleted"`
 	IsHidden          bool   `json:"isHidden"`
 	CollectionID      *int64 `json:"collectionId"`
+	ShowRepresentativesOnly bool `json:"showRepresentativesOnly"`
 
 	SortOption string `json:"sortOption"`
 	SortDesc   bool   `json:"sortDesc"`
@@ -241,9 +242,14 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 	psql := sq.StatementBuilder.PlaceholderFormat(sq.Question)
 
 	// Bazowe zapytanie
+	lastModCol := "a.last_modified"
+	if filters.ShowRepresentativesOnly {
+		lastModCol = "MAX(a.last_modified) AS last_modified"
+	}
+
 	base := psql.Select(
 		"a.id", "a.file_name", "a.file_path", "a.file_type", "a.file_size",
-		"a.thumbnail_path", "a.date_added", "a.last_modified",
+		"a.thumbnail_path", "a.date_added", lastModCol,
 		"a.image_width", "a.image_height", "a.dominant_color",
 		"a.rating", "a.is_favorite", "a.is_deleted", "a.is_hidden", "a.group_id",
 		"a.has_alpha_channel", "a.bit_depth", "a.file_hash", "a.description",
@@ -376,6 +382,13 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 		base = base.Where("NOT EXISTS (SELECT 1 FROM asset_tags at WHERE at.asset_id = a.id)")
 	}
 
+	// === GROUPING (REPRESENTATIVES) ===
+	if filters.ShowRepresentativesOnly {
+		// In SQLite, GROUP BY with an aggregate like MAX() returns the row matching that aggregate.
+		// We use MAX(last_modified) in the Select list to pick the most recently updated file as the group representative.
+		base = base.GroupBy("a.group_id")
+	}
+
 	// ==========================================
 	// COUNT (Używamy s.sysDB)
 	// ==========================================
@@ -385,15 +398,33 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 		return nil, fmt.Errorf("failed to build base sql: %w", err)
 	}
 
+	// Better way to count: if grouping, count distinct group_ids.
+	// We need to extract the FROM/WHERE part but carefully.
 	fromIndex := strings.Index(strings.ToUpper(sqlBase), "FROM")
 	if fromIndex == -1 {
 		return nil, fmt.Errorf("invalid sql generated (no FROM clause)")
 	}
-	sqlCount := "SELECT COUNT(*) " + sqlBase[fromIndex:]
+	
+	// Remove ORDER BY and LIMIT from the count query if they exist
+	countPart := sqlBase[fromIndex:]
+	if orderIdx := strings.Index(strings.ToUpper(countPart), "ORDER BY"); orderIdx != -1 {
+		countPart = countPart[:orderIdx]
+	}
+	if groupIdx := strings.Index(strings.ToUpper(countPart), "GROUP BY"); groupIdx != -1 {
+		countPart = countPart[:groupIdx]
+	}
+
+	var sqlCount string
+	if filters.ShowRepresentativesOnly {
+		sqlCount = "SELECT COUNT(DISTINCT a.group_id) " + countPart
+	} else {
+		sqlCount = "SELECT COUNT(*) " + countPart
+	}
 
 	var totalCount int
 	err = s.sysDB.QueryRowContext(ctx, sqlCount, argsBase...).Scan(&totalCount)
 	if err != nil {
+		s.logger.Error("Failed to count assets", "sql", sqlCount, "error", err)
 		return nil, fmt.Errorf("failed to count assets: %w", err)
 	}
 
@@ -454,7 +485,7 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 		var imgW, imgH sql.NullInt64
 		var hasAlpha sql.NullBool
 		var dateAddedStr string // SQLite TEXT
-		var lastModTime time.Time
+		var lastModStr string   // SQLite TEXT
 		var groupId sql.NullString
 		var bitDepth sql.NullInt64
 		var fileHash sql.NullString
@@ -462,7 +493,7 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 
 		err := rows.Scan(
 			&a.ID, &a.FileName, &a.FilePath, &a.FileType, &a.FileSize,
-			&thumbPath, &dateAddedStr, &lastModTime,
+			&thumbPath, &dateAddedStr, &lastModStr,
 			&imgW, &imgH, &domColor,
 			&a.Rating, &a.IsFavorite, &a.IsDeleted, &a.IsHidden, &groupId,
 			&hasAlpha, &bitDepth, &fileHash, &description,
@@ -501,7 +532,14 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 			a.DominantColor = ""
 		}
 
-		a.LastModified = lastModTime
+		// Parsowanie last_modified
+		if parsedTime, err := time.Parse("2006-01-02 15:04:05", lastModStr); err == nil {
+			a.LastModified = parsedTime
+		} else if parsedTime, err := time.Parse(time.RFC3339, lastModStr); err == nil {
+			a.LastModified = parsedTime
+		} else {
+			a.LastModified = time.Now()
+		}
 
 		if imgW.Valid {
 			a.ImageWidth = imgW.Int64

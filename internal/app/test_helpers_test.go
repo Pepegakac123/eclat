@@ -105,20 +105,18 @@ func insertTestAsset(t *testing.T, q database.Querier) database.Asset {
 }
 
 func insertTestAssetWithParams(t *testing.T, q database.Querier, fileName, filePath string, isDeleted, isHidden bool) database.Asset {
+	return insertTestAssetWithParamsAndGroup(t, q, fileName, filePath, isDeleted, isHidden, "group_"+fileName)
+}
+
+func insertTestAssetWithParamsAndGroup(t *testing.T, q database.Querier, fileName, filePath string, isDeleted, isHidden bool, groupID string) database.Asset {
 	ctx := context.Background()
 
 	// Ensure a scan folder exists
 	folder, err := q.CreateScanFolder(ctx, filepath.Dir(filePath))
 	if err != nil {
-		// Try to fetch if it exists (e.g. from previous calls)
 		folder, err = q.GetScanFolderByPath(ctx, filepath.Dir(filePath))
 		if err != nil {
-			// If still error, create a unique one
-			folder, err = q.CreateScanFolder(ctx, filepath.Dir(filePath)+"_"+fileName)
-			if err != nil {
-				// Fallback to random
-				folder, _ = q.CreateScanFolder(ctx, "/tmp/random_"+fileName)
-			}
+			folder, _ = q.CreateScanFolder(ctx, "/tmp/random_"+fileName)
 		}
 	}
 
@@ -137,7 +135,7 @@ func insertTestAssetWithParams(t *testing.T, q database.Querier, fileName, fileP
 		HasAlphaChannel: sql.NullBool{Bool: false, Valid: true},
 		LastModified:    time.Now(),
 		LastScanned:     time.Now(),
-		GroupID:         "group_" + fileName,
+		GroupID:         groupID,
 	}
 
 	asset, err := q.CreateAsset(ctx, params)

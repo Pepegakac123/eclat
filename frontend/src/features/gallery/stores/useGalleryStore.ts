@@ -20,6 +20,7 @@ export interface GalleryFilters {
   heightRange: [number, number]; // C#: MinHeight, MaxHeight
   fileSizeRange: [number, number];
   hasAlpha: boolean | null; // C#: HasAlphaChannel (null = wszystko, true = z, false = bez)
+  showRepresentativesOnly: boolean;
 }
 
 export type SortOption = "dateadded" | "filename" | "filesize" | "lastmodified";
@@ -73,6 +74,7 @@ const DEFAULT_FILTERS: GalleryFilters = {
   heightRange: [0, 8192],
   fileSizeRange: [0, 4096],
   hasAlpha: null,
+  showRepresentativesOnly: true,
 };
 
 export const useGalleryStore = create<GalleryState>()(

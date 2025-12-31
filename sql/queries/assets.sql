@@ -169,19 +169,19 @@ WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1;
 
 -- name: GetSidebarStats :one
 SELECT
-    (SELECT COUNT(*) FROM assets a
+    (SELECT COUNT(DISTINCT group_id) FROM assets a
      JOIN scan_folders f ON a.scan_folder_id = f.id
      WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND a.is_hidden = 0) as all_count,
 
-    (SELECT COUNT(*) FROM assets a
+    (SELECT COUNT(DISTINCT group_id) FROM assets a
      JOIN scan_folders f ON a.scan_folder_id = f.id
      WHERE a.is_favorite = 1 AND a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND a.is_hidden = 0) as favorites_count,
 
-    (SELECT COUNT(*) FROM assets WHERE is_deleted = 1 AND is_hidden = 0) as trash_count,
+    (SELECT COUNT(DISTINCT group_id) FROM assets WHERE is_deleted = 1 AND is_hidden = 0) as trash_count,
 
-    (SELECT COUNT(*) FROM assets WHERE is_hidden = 1 AND is_deleted = 0) as hidden_count,
+    (SELECT COUNT(DISTINCT group_id) FROM assets WHERE is_hidden = 1 AND is_deleted = 0) as hidden_count,
 
-    (SELECT COUNT(DISTINCT a.id)
+    (SELECT COUNT(DISTINCT a.group_id)
      FROM assets a
      LEFT JOIN asset_tags at ON a.id = at.asset_id
      JOIN scan_folders f ON a.scan_folder_id = f.id

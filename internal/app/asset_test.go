@@ -256,6 +256,28 @@ func TestAssetService_GetAssets(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, res.TotalCount)
 	assert.Equal(t, a2.ID, res.Items[0].ID)
+
+	// Case F: Grouping (Representatives)
+	// Add another version of Alpha
+	insertTestAssetWithParamsAndGroup(t, queries, "Alpha_v2.png", "/tmp/Alpha_v2.png", false, false, a1.GroupID)
+
+	// Without grouping, we should have 4 assets (a1, a2, a3 + alpha_v2)
+	res, err = service.GetAssets(AssetQueryFilters{
+		Page:     1,
+		PageSize: 10,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 4, res.TotalCount)
+
+	// With grouping, we should still have 3 representatives
+	res, err = service.GetAssets(AssetQueryFilters{
+		Page:                    1,
+		PageSize:                10,
+		ShowRepresentativesOnly: true,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 3, res.TotalCount)
+	assert.Len(t, res.Items, 3)
 }
 
 func TestAssetService_GetAssets_ByFileType(t *testing.T) {
