@@ -1,4 +1,47 @@
-build/bin
-node_modules
-frontend/dist
+# Binaries
+build/bin/
+bin/
+
+# Dependencies
+node_modules/
+vendor/
+
+# Frontend
+frontend/dist/
+frontend/wailsjs/
+frontend/.next/
+frontend/.vercel/
+.next/
+dist/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
 *.out
+.DS_Store
+Thumbs.db
+
+# OS specific
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+frontend/package-lock.json
+frontend/bun.lockb
+*.db
+*.db-journal
+*.db-wal
+frontend/package.json.md5
+
+# Wails
+frontend/src/wailsjs/
