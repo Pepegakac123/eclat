@@ -17,13 +17,13 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux/amd64
-            artifact_name: eclat-linux-amd64
+            artifact_name: eclat-linux-amd64.zip
           - os: windows-latest
             platform: windows/amd64
             artifact_name: eclat-windows-installer.exe
           - os: macos-latest
             platform: darwin/universal
-            artifact_name: eclat-macos-universal.app.zip
+            artifact_name: eclat-macos-universal.zip
 
     runs-on: ${{ matrix.os }}
 
@@ -73,7 +73,8 @@ jobs:
             # Wails build -nsis produces <outputfilename>-installer.exe
             mv build/bin/*installer.exe release-artifacts/${{ matrix.artifact_name }}
           elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            mv build/bin/eclat release-artifacts/${{ matrix.artifact_name }}
+            cd build/bin
+            zip ../../release-artifacts/${{ matrix.artifact_name }} eclat
           elif [ "${{ matrix.os }}" = "macos-latest" ]; then
             # Wails produces a .app bundle on macOS. Zip it.
             cd build/bin
