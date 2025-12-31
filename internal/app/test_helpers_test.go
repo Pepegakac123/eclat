@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"eclat/internal/database"
 	"eclat/internal/feedback"
+	"eclat/internal/scanner"
+	"fmt"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -49,6 +51,30 @@ func setupAssetServiceTest(t *testing.T) (*AssetService, database.Querier) {
 	service := NewAssetService(queries, sysDB, logger, notifier, "/tmp")
 	service.Startup(context.Background())
 	return service, queries
+}
+
+// setupMaterialSetServiceTest creates a MaterialSetService with a test DB and logger.
+func setupMaterialSetServiceTest(t *testing.T) (*MaterialSetService, database.Querier) {
+	_, queries := setupTestDB(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	thumbGen := &MockThumbGen{}
+	service := NewMaterialSetService(queries, logger, thumbGen)
+	service.Startup(context.Background())
+	return service, queries
+}
+
+type MockThumbGen struct {
+	ShouldFail bool
+}
+
+func (m *MockThumbGen) Generate(ctx context.Context, sourcePath string) (scanner.ThumbnailResult, error) {
+	if m.ShouldFail {
+		return scanner.ThumbnailResult{}, fmt.Errorf("mock error")
+	}
+	return scanner.ThumbnailResult{
+		WebPath:       "/thumbnails/mock_cover.jpg",
+		IsPlaceholder: false,
+	}, nil
 }
 
 type MockNotifier struct {
