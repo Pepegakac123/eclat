@@ -32,6 +32,8 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useToastListener } from "@/hooks/useToastListener";
 import { useScanFolders } from "./hooks/useScanFolders";
 import { useScanProgress } from "./hooks/useScanProgress";
@@ -542,8 +544,50 @@ export default function SettingsPage() {
 													<div className="h-px flex-1 bg-default-100" />
 												</div>
 												<div className="p-4 rounded-xl bg-default-50 border border-default-100">
-													<div className="whitespace-pre-wrap text-small text-default-700 leading-relaxed font-sans">
-														{rel.body || "No release notes provided."}
+													<div className="text-small text-default-700 leading-relaxed font-sans">
+														<ReactMarkdown
+															remarkPlugins={[remarkGfm]}
+															components={{
+																h1: ({ children }) => (
+																	<h1 className="text-lg font-bold mb-2">
+																		{children}
+																	</h1>
+																),
+																h2: ({ children }) => (
+																	<h2 className="text-md font-bold mb-2">
+																		{children}
+																	</h2>
+																),
+																h3: ({ children }) => (
+																	<h3 className="text-sm font-bold mb-1">
+																		{children}
+																	</h3>
+																),
+																ul: ({ children }) => (
+																	<ul className="list-disc ml-4 mb-2">
+																		{children}
+																	</ul>
+																),
+																ol: ({ children }) => (
+																	<ol className="list-decimal ml-4 mb-2">
+																		{children}
+																	</ol>
+																),
+																li: ({ children }) => (
+																	<li className="mb-1">{children}</li>
+																),
+																code: ({ children }) => (
+																	<code className="bg-default-200 px-1 rounded font-mono text-xs">
+																		{children}
+																	</code>
+																),
+																p: ({ children }) => (
+																	<p className="mb-2 last:mb-0">{children}</p>
+																),
+															}}
+														>
+															{rel.body || "No release notes provided."}
+														</ReactMarkdown>
 													</div>
 												</div>
 											</div>
@@ -553,8 +597,50 @@ export default function SettingsPage() {
 											<h5 className="text-sm font-bold text-default-500 uppercase tracking-wider mb-2">
 												Release Notes
 											</h5>
-											<div className="whitespace-pre-wrap text-small text-default-700 leading-relaxed font-sans">
-												{releaseInfo?.body || "No release notes provided."}
+											<div className="text-small text-default-700 leading-relaxed font-sans">
+												<ReactMarkdown
+													remarkPlugins={[remarkGfm]}
+													components={{
+														h1: ({ children }) => (
+															<h1 className="text-lg font-bold mb-2">
+																{children}
+															</h1>
+														),
+														h2: ({ children }) => (
+															<h2 className="text-md font-bold mb-2">
+																{children}
+															</h2>
+														),
+														h3: ({ children }) => (
+															<h3 className="text-sm font-bold mb-1">
+																{children}
+															</h3>
+														),
+														ul: ({ children }) => (
+															<ul className="list-disc ml-4 mb-2">
+																{children}
+															</ul>
+														),
+														ol: ({ children }) => (
+															<ol className="list-decimal ml-4 mb-2">
+																{children}
+															</ol>
+														),
+														li: ({ children }) => (
+															<li className="mb-1">{children}</li>
+														),
+														code: ({ children }) => (
+															<code className="bg-default-200 px-1 rounded font-mono text-xs">
+																{children}
+															</code>
+														),
+														p: ({ children }) => (
+															<p className="mb-2 last:mb-0">{children}</p>
+														),
+													}}
+												>
+													{releaseInfo?.body || "No release notes provided."}
+												</ReactMarkdown>
 											</div>
 										</div>
 									)}
