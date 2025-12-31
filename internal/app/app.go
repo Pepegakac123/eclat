@@ -5,6 +5,8 @@ import (
 	"eclat/internal/database"
 	"eclat/internal/scanner"
 	"eclat/internal/settings"
+	"eclat/internal/update"
+	"eclat/internal/version"
 	"eclat/internal/watcher"
 	"fmt"
 	"log/slog"
@@ -27,10 +29,11 @@ type App struct {
 	Scanner            *scanner.Scanner
 	SettingsService    *settings.SettingsService
 	Watcher            *watcher.Service
+	UpdateService      *update.UpdateService
 }
 
 // NewApp creates a new App application struct with injected dependencies.
-func NewApp(db database.Querier, logger *slog.Logger, assetService *AssetService, materialSetService *MaterialSetService, tagService *TagService, scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service) *App {
+func NewApp(db database.Querier, logger *slog.Logger, assetService *AssetService, materialSetService *MaterialSetService, tagService *TagService, scanner *scanner.Scanner, settingsService *settings.SettingsService, watcher *watcher.Service, updateService *update.UpdateService) *App {
 	return &App{
 		db:                 db,
 		logger:             logger,
@@ -40,6 +43,7 @@ func NewApp(db database.Querier, logger *slog.Logger, assetService *AssetService
 		Scanner:            scanner,
 		SettingsService:    settingsService,
 		Watcher:            watcher,
+		UpdateService:      updateService,
 	}
 }
 
@@ -53,6 +57,7 @@ func (a *App) OnStartup(ctx context.Context) {
 	a.Scanner.Startup(ctx)
 	a.SettingsService.Startup(ctx)
 	a.Watcher.Startup(ctx)
+	a.UpdateService.Startup(ctx)
 
 	// Start listening for watcher events to trigger scanner updates
 	go a.Scanner.ListenToWatcher(a.Watcher.Events)
@@ -80,7 +85,7 @@ func (a *App) Shutdown(ctx context.Context) {
 
 // GetAppVersion returns the current version of the application.
 func (a *App) GetAppVersion() string {
-	return Version
+	return version.Version
 }
 
 // OpenInExplorer opens the file explorer and selects the file at the given path.

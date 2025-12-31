@@ -691,3 +691,26 @@ export namespace sync {
 
 }
 
+export namespace update {
+	
+	export class ReleaseInfo {
+	    tagName: string;
+	    body: string;
+	    downloadUrl: string;
+	    isUpdateAvailable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReleaseInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tagName = source["tagName"];
+	        this.body = source["body"];
+	        this.downloadUrl = source["downloadUrl"];
+	        this.isUpdateAvailable = source["isUpdateAvailable"];
+	    }
+	}
+
+}
+
