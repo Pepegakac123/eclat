@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.3] - 2025-12-31
+
+### 🚀 Added
+- **Asset Version Grouping**: Related files (like versions, backups, or texture sets) are now automatically grouped. The gallery stays clean by showing only one "representative" per group.
+- **Improved Matching Heuristics**: Smart recognition now handles common naming patterns like `_v1`, `_robocze`, leading numbers, and Blender backups (`.blend1`).
+- **Interactive Versions**: You can now switch between different versions of an asset directly from the Inspector's "Versions" tab.
+- **Dynamic Debug Mode**: Added a toggle in Settings -> Advanced to enable detailed logging for troubleshooting scanner and grouping issues.
+- **Markdown Support**: Release notes and changelogs now render with proper Markdown formatting for better readability.
+- **Automatic Cleanup**: Application now automatically removes logs and trashed assets older than 7 days to save space.
+
+### 🐛 Fixed
+- **Windows Update Reliability**: Improved the automatic update process on Windows by prioritizing installers and using more robust execution methods.
+- **Parallel Grouping**: Fixed an issue where new related files scanned in parallel wouldn't always be grouped correctly.
+
+---
+
 ## [0.1.2] - 2025-12-31
 
 ### 🚀 Added
@@ -42,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Modern UI**: Fully reactive interface built with React, HeroUI, and Tailwind CSS.
 
 ---
+[0.1.3]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.3
 [0.1.2]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.0
