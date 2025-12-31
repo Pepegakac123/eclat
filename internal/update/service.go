@@ -19,12 +19,19 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// ReleaseNote represents a single version's changelog.
+type ReleaseNote struct {
+	TagName string `json:"tagName"`
+	Body    string `json:"body"`
+}
+
 // ReleaseInfo represents the information about a GitHub release.
 type ReleaseInfo struct {
-	TagName           string `json:"tagName"`
-	Body              string `json:"body"`
-	DownloadUrl       string `json:"downloadUrl"`
-	IsUpdateAvailable bool   `json:"isUpdateAvailable"`
+	TagName           string        `json:"tagName"`
+	Body              string        `json:"body"`
+	DownloadUrl       string        `json:"downloadUrl"`
+	IsUpdateAvailable bool          `json:"isUpdateAvailable"`
+	History           []ReleaseNote `json:"history"`
 }
 
 // GitHubRelease is the structure for parsing GitHub API response.
@@ -55,13 +62,18 @@ func (s *UpdateService) Startup(ctx context.Context) {
 	s.ctx = ctx
 }
 
-// CheckForUpdates checks GitHub for a newer version of the application.
+func normalizeVersion(v string) string {
+	return strings.TrimPrefix(strings.ToLower(strings.TrimSpace(v)), "v")
+}
+
+// CheckForUpdates checks GitHub for newer versions of the application.
 func (s *UpdateService) CheckForUpdates() (ReleaseInfo, error) {
 	s.logger.Info("Checking for updates...")
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get("https://api.github.com/repos/pepegakac123/eclat/releases/latest")
+	// Fetch all releases instead of just latest to build history
+	resp, err := client.Get("https://api.github.com/repos/pepegakac123/eclat/releases")
 	if err != nil {
-		s.logger.Error("Failed to fetch latest release from GitHub", "error", err)
+		s.logger.Error("Failed to fetch releases from GitHub", "error", err)
 		return ReleaseInfo{}, fmt.Errorf("failed to fetch updates: %w", err)
 	}
 	defer resp.Body.Close()
@@ -71,25 +83,46 @@ func (s *UpdateService) CheckForUpdates() (ReleaseInfo, error) {
 		return ReleaseInfo{}, fmt.Errorf("github api error: %s", resp.Status)
 	}
 
-	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		s.logger.Error("Failed to decode GitHub release info", "error", err)
-		return ReleaseInfo{}, fmt.Errorf("failed to decode release info: %w", err)
+	var releases []GitHubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		s.logger.Error("Failed to decode GitHub releases info", "error", err)
+		return ReleaseInfo{}, fmt.Errorf("failed to decode releases info: %w", err)
 	}
 
-	remoteVer := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(release.TagName)), "v")
-	currentVer := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(version.Version)), "v")
+	if len(releases) == 0 {
+		return ReleaseInfo{IsUpdateAvailable: false}, nil
+	}
+
+	currentVer := normalizeVersion(version.Version)
+	latestRelease := releases[0]
+	remoteVer := normalizeVersion(latestRelease.TagName)
 
 	isAvailable := remoteVer != "" && remoteVer != currentVer
-	
+
+	var history []ReleaseNote
 	downloadUrl := ""
-	// Find the appropriate asset based on the OS
-	for _, asset := range release.Assets {
-		if runtime.GOOS == "windows" && (filepath.Ext(asset.Name) == ".exe" || filepath.Ext(asset.Name) == ".msi") {
-			downloadUrl = asset.BrowserDownloadUrl
-			break
+
+	// Build history of releases newer than current version
+	for _, rel := range releases {
+		relVer := normalizeVersion(rel.TagName)
+		if relVer == currentVer {
+			break // Reached current version, stop history
 		}
-		// For Mac/Linux we might just link to the release page or a generic package if we don't have a better strategy
+		
+		history = append(history, ReleaseNote{
+			TagName: rel.TagName,
+			Body:    rel.Body,
+		})
+
+		// Use download URL from the very first (latest) release
+		if downloadUrl == "" {
+			for _, asset := range rel.Assets {
+				if runtime.GOOS == "windows" && (filepath.Ext(asset.Name) == ".exe" || filepath.Ext(asset.Name) == ".msi") {
+					downloadUrl = asset.BrowserDownloadUrl
+					break
+				}
+			}
+		}
 	}
 
 	// Fallback to browser download if no specific asset found or on non-windows
@@ -98,13 +131,14 @@ func (s *UpdateService) CheckForUpdates() (ReleaseInfo, error) {
 	}
 
 	info := ReleaseInfo{
-		TagName:           release.TagName,
-		Body:              release.Body,
+		TagName:           latestRelease.TagName,
+		Body:              latestRelease.Body,
 		DownloadUrl:       downloadUrl,
 		IsUpdateAvailable: isAvailable,
+		History:           history,
 	}
 
-	s.logger.Info("Update check completed", "available", isAvailable, "version", release.TagName)
+	s.logger.Info("Update check completed", "available", isAvailable, "version", latestRelease.TagName, "history_count", len(history))
 	return info, nil
 }
 

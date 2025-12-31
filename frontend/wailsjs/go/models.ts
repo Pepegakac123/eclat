@@ -693,11 +693,26 @@ export namespace sync {
 
 export namespace update {
 	
+	export class ReleaseNote {
+	    tagName: string;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReleaseNote(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tagName = source["tagName"];
+	        this.body = source["body"];
+	    }
+	}
 	export class ReleaseInfo {
 	    tagName: string;
 	    body: string;
 	    downloadUrl: string;
 	    isUpdateAvailable: boolean;
+	    history: ReleaseNote[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ReleaseInfo(source);
@@ -709,7 +724,26 @@ export namespace update {
 	        this.body = source["body"];
 	        this.downloadUrl = source["downloadUrl"];
 	        this.isUpdateAvailable = source["isUpdateAvailable"];
+	        this.history = this.convertValues(source["history"], ReleaseNote);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

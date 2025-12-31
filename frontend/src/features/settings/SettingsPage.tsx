@@ -525,16 +525,40 @@ export default function SettingsPage() {
 								</div>
 							</ModalHeader>
 							<ModalBody className="py-6">
-								<div className="space-y-4">
-									<div className="p-4 rounded-xl bg-default-50 border border-default-100">
-										<h5 className="text-sm font-bold text-default-500 uppercase tracking-wider mb-2">
-											Release Notes
-										</h5>
-										<div className="whitespace-pre-wrap text-small text-default-700 leading-relaxed font-sans">
-											{releaseInfo?.body || "No release notes provided."}
+								<div className="space-y-6">
+									{releaseInfo?.history && releaseInfo.history.length > 0 ? (
+										releaseInfo.history.map((rel, index) => (
+											<div key={rel.tagName} className="space-y-2">
+												<div className="flex items-center gap-2">
+													<div className="h-px flex-1 bg-default-100" />
+													<Chip
+														size="sm"
+														variant="dot"
+														color={index === 0 ? "primary" : "default"}
+														className="border-none bg-transparent font-bold"
+													>
+														{rel.tagName} {index === 0 && "(Latest)"}
+													</Chip>
+													<div className="h-px flex-1 bg-default-100" />
+												</div>
+												<div className="p-4 rounded-xl bg-default-50 border border-default-100">
+													<div className="whitespace-pre-wrap text-small text-default-700 leading-relaxed font-sans">
+														{rel.body || "No release notes provided."}
+													</div>
+												</div>
+											</div>
+										))
+									) : (
+										<div className="p-4 rounded-xl bg-default-50 border border-default-100">
+											<h5 className="text-sm font-bold text-default-500 uppercase tracking-wider mb-2">
+												Release Notes
+											</h5>
+											<div className="whitespace-pre-wrap text-small text-default-700 leading-relaxed font-sans">
+												{releaseInfo?.body || "No release notes provided."}
+											</div>
 										</div>
-									</div>
-									<p className="text-tiny text-default-400 italic">
+									)}
+									<p className="text-tiny text-default-400 italic text-center pt-2">
 										Note: Updates on Windows will restart the application
 										automatically. On other platforms, this will open the
 										download page in your browser.
