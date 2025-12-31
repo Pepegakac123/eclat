@@ -86,6 +86,12 @@ export const InspectorProperties = ({ asset }: InspectorPropertiesProps) => {
           value={localDescription}
           onValueChange={setLocalDescription}
           onBlur={handleDescriptionSave}
+          maxLength={500}
+          description={`${localDescription.length}/500`}
+          isInvalid={localDescription.length >= 500}
+          errorMessage={
+            localDescription.length >= 500 ? "Maximum limit reached" : ""
+          }
           classNames={{
             input: "text-small",
             inputWrapper:

@@ -74,16 +74,14 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
   };
 
   const handleCopyPath = async () => {
-    const success = await ClipboardSetText(asset.filePath);
-    if (success) {
-      addToast({
-        title: "Path Copied",
-        description: "Copied to clipboard",
-        color: "success",
-        variant: "flat",
-        timeout: 2000,
-      });
-    }
+    await ClipboardSetText(asset.filePath);
+    addToast({
+      title: "Path Copied",
+      description: "Copied to clipboard",
+      color: "success",
+      variant: "flat",
+      timeout: 2000,
+    });
   };
 
   // --- LOGIKA ZMIANY TYPU ---
