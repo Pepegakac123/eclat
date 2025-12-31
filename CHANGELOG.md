@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.4] - 2025-12-31
+
+### 🚀 Added
+- **Dynamic Color Refresh**: The color filter now automatically updates its palette when new assets are scanned or existing ones are modified, ensuring you always see relevant filtering options.
+- **Improved Settings Layout**: The "Scan Now" button and scanner status have been moved to a more accessible location in the Settings page, making it easier to manage your library updates.
+
+### 🐛 Fixed
+- **Empty Color Palette**: Fixed an issue where the color filter would default to a preset palette instead of showing "No colors found" when the library was empty or had no color data.
+- **Scanner Status Alignment**: Corrected the layout of the scanner status indicator to ensure it aligns properly with the action button and description.
+
+---
+
 ## [0.1.3] - 2025-12-31
 
 ### 🚀 Added
@@ -58,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Modern UI**: Fully reactive interface built with React, HeroUI, and Tailwind CSS.
 
 ---
+[0.1.4]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.4
 [0.1.3]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.3
 [0.1.2]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.1
