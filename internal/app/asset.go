@@ -50,7 +50,10 @@ func (s *AssetService) Startup(ctx context.Context) {
 
 // MigrateThumbnailPaths konwertuje bezwzględne ścieżki systemowe na ścieżki relatywne /thumbnails/
 func (s *AssetService) MigrateThumbnailPaths() error {
-	ctx := context.Background()
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s.logger.Info("Starting thumbnail path migration...")
 
 	// Pobierz wszystkie assety z potencjalnie błędnymi ścieżkami
@@ -229,6 +232,11 @@ type UpdateAssetRequest struct {
 
 // GetAssets to główna metoda galerii, obsługująca dynamiczne filtrowanie.
 func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, error) {
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	// Inicjalizacja Buildera dla SQLite
 	psql := sq.StatementBuilder.PlaceholderFormat(sq.Question)
 
@@ -384,7 +392,7 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 	sqlCount := "SELECT COUNT(*) " + sqlBase[fromIndex:]
 
 	var totalCount int
-	err = s.sysDB.QueryRowContext(context.Background(), sqlCount, argsBase...).Scan(&totalCount)
+	err = s.sysDB.QueryRowContext(ctx, sqlCount, argsBase...).Scan(&totalCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count assets: %w", err)
 	}
@@ -429,7 +437,7 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 	}
 
 	// POPRAWKA: Używamy s.sysDB.QueryContext
-	rows, err := s.sysDB.QueryContext(context.Background(), finalSQL, finalArgs...)
+	rows, err := s.sysDB.QueryContext(ctx, finalSQL, finalArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -544,7 +552,10 @@ func (s *AssetService) GetAssets(filters AssetQueryFilters) (*PagedAssetResult, 
 
 // GetAssetById pobiera pojedynczy asset wraz z jego tagami i groupID.
 func (s *AssetService) GetAssetById(id int64) (*AssetDetails, error) {
-	ctx := context.Background()
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	// 1. Pobierz asset (sqlc wygeneruje metodę zwracającą struct z nowymi polami)
 	asset, err := s.db.GetAssetById(ctx, id)
@@ -619,7 +630,10 @@ func (s *AssetService) GetAssetById(id int64) (*AssetDetails, error) {
 
 // GetLibraryStats zwraca ogólne statystyki (liczba plików, rozmiar).
 func (s *AssetService) GetLibraryStats() (*LibraryStats, error) {
-	ctx := context.Background()
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	stats, err := s.db.GetLibraryStats(ctx)
 	if err != nil {
 		return nil, err
@@ -673,9 +687,12 @@ func parseTime(v string, logger *slog.Logger) *time.Time {
 }
 
 
-// GetSidebarStats zwraca liczniki dla menu bocznego (All, Favorites, Trash, Hidden, Uncategorized).
+// GetSidebarStats zwraca liczniki dla paska bocznego (All, Favorites, Trash, Hidden, Uncategorized).
 func (s *AssetService) GetSidebarStats() (*SidebarStats, error) {
-	ctx := context.Background()
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	// Query teraz zwraca jeden wiersz z 5 kolumnami
 	stats, err := s.db.GetSidebarStats(ctx)
@@ -694,7 +711,10 @@ func (s *AssetService) GetSidebarStats() (*SidebarStats, error) {
 
 // SetAssetHidden ustawia flagę ukrycia dla assetu.
 func (s *AssetService) SetAssetHidden(id int64, hidden bool) error {
-	ctx := context.Background()
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return s.db.SetAssetHidden(ctx, database.SetAssetHiddenParams{
 		IsHidden: hidden,
 		ID:       id,
@@ -1028,7 +1048,11 @@ func (s *AssetService) RemoveAssetFromMaterialSet(setId int64, assetId int64) er
 // GetThumbnailData returns the thumbnail image as a base64 data URL.
 // This is a workaround for issues serving dynamic assets via Wails Handler in some Dev environments.
 func (s *AssetService) GetThumbnailData(assetId int64) (string, error) {
-	asset, err := s.db.GetAssetById(context.Background(), assetId)
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	asset, err := s.db.GetAssetById(ctx, assetId)
 	if err != nil {
 		return "", err
 	}

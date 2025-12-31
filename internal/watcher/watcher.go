@@ -194,7 +194,7 @@ func (s *Service) startLoop() {
 				continue
 			}
 
-			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
+			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) || event.Has(fsnotify.Remove) {
 				s.triggerDebounce(event.Name)
 			}
 

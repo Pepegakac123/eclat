@@ -2,8 +2,11 @@ import { Outlet } from "react-router-dom";
 import { TopToolbar } from "@/features/gallery/components/TopToolbar";
 import { InspectorPanel } from "@/features/inspector/components/InspectorPanel";
 import { Sidebar } from "./sidebar/Sidebar";
+import { useAssetEvents } from "@/hooks/useAssetEvents";
 
 export const MainLayout = () => {
+  useAssetEvents();
+
   return (
     <div
       className="grid h-screen w-screen overflow-hidden bg-background text-foreground
