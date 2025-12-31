@@ -18,15 +18,25 @@ var versionSuffixes = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)[_ -]copy(\s*\d+)?$`), // _copy, -copy 2
 	regexp.MustCompile(`(?i)\s*\(\d+\)$`),         // (1), (2) - Windows/Linux system duplicates
 	regexp.MustCompile(`(?i)[_ -]final$`),         // _final
+	regexp.MustCompile(`(?i)[_ -]robocze$`),       // _robocze (Polish for working)
+	regexp.MustCompile(`(?i)[_ -](work|working|backup|temp|old)$`), // Common variants
+	regexp.MustCompile(`(?i)[_ -]\d+$`),           // _001, -02, etc. (trailing numbers with separator)
 }
+
+var leadingNumber = regexp.MustCompile(`(?i)^\d+[._ -]+`)
 
 // getBaseName strips version suffixes from a filename to determine its canonical "base" name.
 // It iteratively applies regex patterns until the name stabilizes.
 func (s *Scanner) getBaseName(filename string) string {
 	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	base = strings.ToLower(base)
 
 	for {
 		original := base
+		// Strip leading numbers
+		base = leadingNumber.ReplaceAllString(base, "")
+
+		// Strip version suffixes
 		for _, re := range versionSuffixes {
 			base = re.ReplaceAllString(base, "")
 		}
@@ -49,8 +59,10 @@ func (s *Scanner) TryHeuristicMatch(ctx context.Context, folderID int64, filenam
 		return "", false
 	}
 
-	// Ask DB for candidates in the same folder matching "BaseName%"
-	pattern := baseName + "%"
+	// Ask DB for candidates in the same folder matching "%BaseName%"
+	// Using % at the beginning allows matching files that might have leading numbers or prefixes 
+	// that our getBaseName strips. We then verify the match in Go logic.
+	pattern := "%" + baseName + "%"
 	candidates, err := s.db.FindPotentialSiblings(ctx, database.FindPotentialSiblingsParams{
 		ScanFolderID: sql.NullInt64{Int64: folderID, Valid: true},
 		FileName:     pattern,
