@@ -73,7 +73,12 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
     }
   };
 
-  const handleCopyPath = async () => {
+  const handleCopyPath = async (e?: any) => {
+    // Prevent bubbling if triggered from the button to avoid double toast
+    if (e && typeof e.stopPropagation === "function") {
+      e.stopPropagation();
+    }
+
     await ClipboardSetText(asset.filePath);
     addToast({
       title: "Path Copied",
@@ -157,7 +162,7 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
         </span>
         <div
           className="flex items-center gap-2 group p-2 rounded-medium bg-default-100 border border-default-200 cursor-pointer hover:bg-default-200 transition-colors"
-          onClick={handleCopyPath}
+          onClick={() => handleCopyPath()}
           title={asset.filePath}
         >
           <div className="flex-1 truncate font-mono text-tiny text-default-600">
@@ -169,6 +174,7 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
               isIconOnly
               variant="light"
               className="h-6 w-6 min-w-0 text-default-400 group-hover:text-default-700"
+              onClick={handleCopyPath}
             >
               <Copy size={12} />
             </Button>
