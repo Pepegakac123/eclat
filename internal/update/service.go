@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"eclat/internal/version"
@@ -76,7 +77,10 @@ func (s *UpdateService) CheckForUpdates() (ReleaseInfo, error) {
 		return ReleaseInfo{}, fmt.Errorf("failed to decode release info: %w", err)
 	}
 
-	isAvailable := release.TagName != "" && release.TagName != version.Version
+	remoteVer := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(release.TagName)), "v")
+	currentVer := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(version.Version)), "v")
+
+	isAvailable := remoteVer != "" && remoteVer != currentVer
 	
 	downloadUrl := ""
 	// Find the appropriate asset based on the OS
