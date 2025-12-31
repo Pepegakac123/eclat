@@ -141,7 +141,7 @@ func (m *MockThumbnailGenerator) Generate(ctx context.Context, sourcePath string
 	}
 
 	ext := filepath.Ext(sourcePath)
-	webPath := "/thumbnails/mock_thumb.webp"
+	webPath := "/thumbnails/mock_thumb.jpg"
 	isPlaceholder := false
 
 	if ext == ".blend" {

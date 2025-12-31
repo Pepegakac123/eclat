@@ -137,7 +137,7 @@ func (m *MockThumbnailGenerator) Generate(ctx context.Context, sourcePath string
 		return scanner.ThumbnailResult{}, fmt.Errorf("mock error generator")
 	}
 	return scanner.ThumbnailResult{
-		WebPath: "/thumbnails/mock_thumb.webp",
+		WebPath: "/thumbnails/mock_thumb.jpg",
 		Metadata: scanner.ImageMetadata{
 			Width:           1920,
 			Height:          1080,

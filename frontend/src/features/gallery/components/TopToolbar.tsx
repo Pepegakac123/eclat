@@ -74,6 +74,8 @@ export const TopToolbar = () => {
 
   const { sidebarStats: stats, isLoading: isLoadingStats } = useAssetsStats();
 
+  const isSettingsPage = location.pathname.startsWith("/settings");
+
   // --- LOGIKA TYTUŁU ---
   const getPageTitle = () => {
     // 1. Priorytet: Kolekcja
@@ -89,12 +91,15 @@ export const TopToolbar = () => {
     if (path.startsWith("/trash")) return "Recycle Bin";
     if (path.startsWith("/uncategorized")) return "Uncategorized";
     if (path.startsWith("/hidden")) return "Hidden Assets";
+    if (path.startsWith("/settings")) return "Settings";
 
     return "All Assets";
   };
 
   // --- LOGIKA LICZNIKA ---
   const getPageCounter = () => {
+    if (isSettingsPage) return null;
+
     let count: number | undefined = 0;
     let loading = false;
 
@@ -175,198 +180,206 @@ export const TopToolbar = () => {
         {getPageCounter()}
       </div>
 
-      {/* SEKCJA B: WYSZUKIWANIE */}
-      <div className="flex-1 max-w-xl px-6">
-        <Input
-          classNames={{
-            base: "max-w-full h-10",
-            mainWrapper: "h-full",
-            input: "text-small",
-            inputWrapper:
-              "h-full font-normal text-default-500 bg-default-400/20 dark:bg-default-500/20",
-          }}
-          placeholder="Search by filename..."
-          size="sm"
-          startContent={<Search size={18} />}
-          type="search"
-          value={searchValue}
-          onValueChange={setSearchValue}
-          isClearable
-          onClear={() => setSearchValue("")}
-        />
-      </div>
-
-      {/* SEKCJA C: KONTROLA */}
-      <div className="flex items-center gap-4">
-        {/* 1. RESET FILTRÓW */}
-        <Button
-          isIconOnly
-          variant="light"
-          size="sm"
-          onPress={resetFilters}
-          title="Reset filters"
-        >
-          <RefreshCcw size={16} className="text-default-400" />
-        </Button>
-
-        <div className="h-6 w-px bg-default-300" />
-
-        {/* 2. ZOOM SLIDER */}
-        <div className="flex w-32 xl:w-48 items-center gap-2">
-          <Slider
-            size="sm"
-            step={UI_CONFIG.GALLERY.STEP}
-            color="primary"
-            maxValue={UI_CONFIG.GALLERY.MAX_ZOOM}
-            minValue={UI_CONFIG.GALLERY.MIN_ZOOM}
-            aria-label="Thumbnail Size"
-            value={zoomLevel}
-            onChange={(v) => {
-              const val = Array.isArray(v) ? v[0] : v;
-              setZoomLevel(val);
-            }}
-            startContent={
-              <button
-                type="button"
-                className="rounded-full p-1 text-default-400 outline-none transition-colors hover:cursor-pointer hover:text-primary focus-visible:ring-2 focus-visible:ring-primary"
-                onClick={() =>
-                  setZoomLevel(
-                    Math.max(
-                      UI_CONFIG.GALLERY.MIN_ZOOM,
-                      zoomLevel - UI_CONFIG.GALLERY.STEP,
-                    ),
-                  )
-                }
-              >
-                <Minus size={14} />
-              </button>
-            }
-            endContent={
-              <button
-                type="button"
-                className="rounded-full p-1 text-default-400 outline-none transition-colors hover:cursor-pointer hover:text-primary focus-visible:ring-2 focus-visible:ring-primary"
-                onClick={() =>
-                  setZoomLevel(
-                    Math.min(
-                      UI_CONFIG.GALLERY.MAX_ZOOM,
-                      zoomLevel + UI_CONFIG.GALLERY.STEP,
-                    ),
-                  )
-                }
-              >
-                <Plus size={14} />
-              </button>
-            }
-          />
-        </div>
-
-        <div className="h-6 w-px bg-default-300" />
-
-        {/* 3. SORTOWANIE */}
-        <div className="flex items-center gap-1">
-          <Dropdown>
-            <DropdownTrigger>
-              <Button
-                variant="flat"
-                size="sm"
-                endContent={<ChevronDown size={16} />}
-                className="text-default-600 capitalize min-w-[120px] justify-between hidden sm:flex"
-              >
-                {getSortLabel(sortOption)}
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu
-              aria-label="Sort options"
-              disallowEmptySelection
-              selectionMode="single"
-              selectedKeys={new Set([sortOption])}
-              onSelectionChange={(keys) => {
-                const selected = Array.from(keys)[0] as SortOption;
-                setSortOption(selected);
+      {!isSettingsPage && (
+        <>
+          {/* SEKCJA B: WYSZUKIWANIE */}
+          <div className="flex-1 max-w-xl px-6">
+            <Input
+              classNames={{
+                base: "max-w-full h-10",
+                mainWrapper: "h-full",
+                input: "text-small",
+                inputWrapper:
+                  "h-full font-normal text-default-500 bg-default-400/20 dark:bg-default-500/20",
               }}
+              placeholder="Search by filename..."
+              size="sm"
+              startContent={<Search size={18} />}
+              type="search"
+              value={searchValue}
+              onValueChange={setSearchValue}
+              isClearable
+              onClear={() => setSearchValue("")}
+            />
+          </div>
+
+          {/* SEKCJA C: KONTROLA */}
+          <div className="flex items-center gap-4">
+            {/* 1. RESET FILTRÓW */}
+            <Button
+              isIconOnly
+              variant="light"
+              size="sm"
+              onPress={resetFilters}
+              title="Reset filters"
             >
-              <DropdownItem
-                key={UI_CONFIG.GALLERY.AllowedSortOptions.dateadded}
-              >
-                Date Added
-              </DropdownItem>
-              <DropdownItem key={UI_CONFIG.GALLERY.AllowedSortOptions.filename}>
-                File Name
-              </DropdownItem>
-              <DropdownItem key={UI_CONFIG.GALLERY.AllowedSortOptions.filesize}>
-                File Size
-              </DropdownItem>
-              <DropdownItem
-                key={UI_CONFIG.GALLERY.AllowedSortOptions.lastmodified}
-              >
-                Last Modified
-              </DropdownItem>
-            </DropdownMenu>
-          </Dropdown>
+              <RefreshCcw size={16} className="text-default-400" />
+            </Button>
 
-          <Button
-            isIconOnly
-            variant="flat"
-            size="sm"
-            onPress={toggleSortDirection}
-            title={sortDesc ? "Descending" : "Ascending"}
-          >
-            {sortDesc ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}
-          </Button>
+            <div className="h-6 w-px bg-default-300" />
 
-          {/* PAGE SIZE SELECTOR */}
-          <Dropdown>
-            <DropdownTrigger>
-              <Button
-                variant="flat"
+            {/* 2. ZOOM SLIDER */}
+            <div className="flex w-32 xl:w-48 items-center gap-2">
+              <Slider
                 size="sm"
-                className="w-fit min-w-[60px]"
+                step={UI_CONFIG.GALLERY.STEP}
+                color="primary"
+                maxValue={UI_CONFIG.GALLERY.MAX_ZOOM}
+                minValue={UI_CONFIG.GALLERY.MIN_ZOOM}
+                aria-label="Thumbnail Size"
+                value={zoomLevel}
+                onChange={(v) => {
+                  const val = Array.isArray(v) ? v[0] : v;
+                  setZoomLevel(val);
+                }}
                 startContent={
-                  <ListFilter size={16} className="text-default-500" />
+                  <button
+                    type="button"
+                    className="rounded-full p-1 text-default-400 outline-none transition-colors hover:cursor-pointer hover:text-primary focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() =>
+                      setZoomLevel(
+                        Math.max(
+                          UI_CONFIG.GALLERY.MIN_ZOOM,
+                          zoomLevel - UI_CONFIG.GALLERY.STEP,
+                        ),
+                      )
+                    }
+                  >
+                    <Minus size={14} />
+                  </button>
                 }
-              >
-                {pageSize}
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu
-              aria-label="Page Size"
-              disallowEmptySelection
-              selectionMode="single"
-              selectedKeys={new Set([pageSize.toString()])}
-              onSelectionChange={(keys) => {
-                const val = Number(Array.from(keys)[0]);
-                setPageSize(val);
-              }}
-            >
-              {[20, 40, 60, 80, 100].map((size) => (
-                <DropdownItem key={size}>{size} items</DropdownItem>
-              ))}
-            </DropdownMenu>
-          </Dropdown>
-        </div>
+                endContent={
+                  <button
+                    type="button"
+                    className="rounded-full p-1 text-default-400 outline-none transition-colors hover:cursor-pointer hover:text-primary focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() =>
+                      setZoomLevel(
+                        Math.min(
+                          UI_CONFIG.GALLERY.MAX_ZOOM,
+                          zoomLevel + UI_CONFIG.GALLERY.STEP,
+                        ),
+                      )
+                    }
+                  >
+                    <Plus size={14} />
+                  </button>
+                }
+              />
+            </div>
 
-        {/* 4. VIEW TOGGLE */}
-        <ButtonGroup variant="flat" size="sm">
-          <Button
-            isIconOnly
-            className={
-              viewMode === "grid" ? "bg-default-300 text-foreground" : ""
-            }
-            onPress={() => setViewMode("grid")}
-          >
-            <Grid3X3 size={18} />
-          </Button>
-          <Button
-            isIconOnly
-            className={
-              viewMode === "masonry" ? "bg-default-300 text-foreground" : ""
-            }
-            onPress={() => setViewMode("masonry")}
-          >
-            <LayoutList size={18} />
-          </Button>
-        </ButtonGroup>
-      </div>
+            <div className="h-6 w-px bg-default-300" />
+
+            {/* 3. SORTOWANIE */}
+            <div className="flex items-center gap-1">
+              <Dropdown>
+                <DropdownTrigger>
+                  <Button
+                    variant="flat"
+                    size="sm"
+                    endContent={<ChevronDown size={16} />}
+                    className="text-default-600 capitalize min-w-[120px] justify-between hidden sm:flex"
+                  >
+                    {getSortLabel(sortOption)}
+                  </Button>
+                </DropdownTrigger>
+                <DropdownMenu
+                  aria-label="Sort options"
+                  disallowEmptySelection
+                  selectionMode="single"
+                  selectedKeys={new Set([sortOption])}
+                  onSelectionChange={(keys) => {
+                    const selected = Array.from(keys)[0] as SortOption;
+                    setSortOption(selected);
+                  }}
+                >
+                  <DropdownItem
+                    key={UI_CONFIG.GALLERY.AllowedSortOptions.dateadded}
+                  >
+                    Date Added
+                  </DropdownItem>
+                  <DropdownItem
+                    key={UI_CONFIG.GALLERY.AllowedSortOptions.filename}
+                  >
+                    File Name
+                  </DropdownItem>
+                  <DropdownItem
+                    key={UI_CONFIG.GALLERY.AllowedSortOptions.filesize}
+                  >
+                    File Size
+                  </DropdownItem>
+                  <DropdownItem
+                    key={UI_CONFIG.GALLERY.AllowedSortOptions.lastmodified}
+                  >
+                    Last Modified
+                  </DropdownItem>
+                </DropdownMenu>
+              </Dropdown>
+
+              <Button
+                isIconOnly
+                variant="flat"
+                size="sm"
+                onPress={toggleSortDirection}
+                title={sortDesc ? "Descending" : "Ascending"}
+              >
+                {sortDesc ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}
+              </Button>
+
+              {/* PAGE SIZE SELECTOR */}
+              <Dropdown>
+                <DropdownTrigger>
+                  <Button
+                    variant="flat"
+                    size="sm"
+                    className="w-fit min-w-[60px]"
+                    startContent={
+                      <ListFilter size={16} className="text-default-500" />
+                    }
+                  >
+                    {pageSize}
+                  </Button>
+                </DropdownTrigger>
+                <DropdownMenu
+                  aria-label="Page Size"
+                  disallowEmptySelection
+                  selectionMode="single"
+                  selectedKeys={new Set([pageSize.toString()])}
+                  onSelectionChange={(keys) => {
+                    const val = Number(Array.from(keys)[0]);
+                    setPageSize(val);
+                  }}
+                >
+                  {[20, 40, 60, 80, 100].map((size) => (
+                    <DropdownItem key={size}>{size} items</DropdownItem>
+                  ))}
+                </DropdownMenu>
+              </Dropdown>
+            </div>
+
+            {/* 4. VIEW TOGGLE */}
+            <ButtonGroup variant="flat" size="sm">
+              <Button
+                isIconOnly
+                className={
+                  viewMode === "grid" ? "bg-default-300 text-foreground" : ""
+                }
+                onPress={() => setViewMode("grid")}
+              >
+                <Grid3X3 size={18} />
+              </Button>
+              <Button
+                isIconOnly
+                className={
+                  viewMode === "masonry" ? "bg-default-300 text-foreground" : ""
+                }
+                onPress={() => setViewMode("masonry")}
+              >
+                <LayoutList size={18} />
+              </Button>
+            </ButtonGroup>
+          </div>
+        </>
+      )}
     </div>
   );
 };

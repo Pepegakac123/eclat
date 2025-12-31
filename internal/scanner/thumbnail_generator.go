@@ -16,10 +16,11 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	_ "golang.org/x/image/webp"
 
-	"github.com/chai2010/webp"
 	"github.com/disintegration/imaging"
 	"github.com/google/uuid"
+	"image/jpeg"
 )
 
 // ThumbnailGenerator defines the interface for generating or retrieving thumbnails for assets.
@@ -94,7 +95,7 @@ func isSupportedImageExt(ext string) bool {
 }
 
 // Generate creates a thumbnail for the file at srcPath.
-// If the file is a supported image, it generates a WebP thumbnail and extracts metadata.
+// If the file is a supported image, it generates a JPEG thumbnail and extracts metadata.
 // For other files, it returns a pre-configured placeholder.
 func (g *DiskThumbnailGenerator) Generate(ctx context.Context, srcPath string) (ThumbnailResult, error) {
 	ext := strings.ToLower(filepath.Ext(srcPath))
@@ -133,7 +134,7 @@ func (g *DiskThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailRes
 	draw.Draw(imgRGBA, bounds, thumb, bounds.Min, draw.Src)
 
 	id := uuid.New()
-	filename := fmt.Sprintf("%s.webp", id.String())
+	filename := fmt.Sprintf("%s.jpg", id.String())
 	fullDestPath := filepath.Join(g.cacheDir, filename)
 
 	outFile, err := os.Create(fullDestPath)
@@ -142,12 +143,11 @@ func (g *DiskThumbnailGenerator) generateFromImage(srcPath string) (ThumbnailRes
 	}
 	defer outFile.Close()
 
-	err = webp.Encode(outFile, imgRGBA, &webp.Options{
-		Lossless: false,
-		Quality:  80,
+	err = jpeg.Encode(outFile, imgRGBA, &jpeg.Options{
+		Quality: 80,
 	})
 	if err != nil {
-		return ThumbnailResult{}, fmt.Errorf("webp encode error: %w", err)
+		return ThumbnailResult{}, fmt.Errorf("jpeg encode error: %w", err)
 	}
 
 	return ThumbnailResult{
