@@ -81,6 +81,7 @@ export const GalleryGrid = ({ mode }: GalleryGridProps) => {
     isError,
     error,
     openExplorer,
+    openDefaultApp,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -181,7 +182,7 @@ export const GalleryGrid = ({ mode }: GalleryGridProps) => {
               isSelected={selectedAssetIds.has(asset.id)}
               isBulkMode={selectedAssetIds.size > 1}
               onClick={(e) => handleAssetClick(e, asset.id)}
-              onDoubleClick={() => openExplorer(asset.filePath)}
+              onDoubleClick={() => openDefaultApp(asset.filePath)}
               explorerfn={openExplorer}
             />
           </div>

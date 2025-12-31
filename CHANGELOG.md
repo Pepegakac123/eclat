@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] - 2025-12-31
+
+### 🚀 Added
+- **Better Asset Interaction**: Double-clicking an asset now opens it directly in your system's default application (e.g., Blender, Photoshop, Image Viewer) instead of just showing it in the file explorer.
+
+### 🐛 Fixed
+- **Workflow Stability**: Improved CI/CD pipeline with better dependency management for Linux and Windows installers.
+
+---
+
 ## [0.1.1] - 2025-12-31
 
 ### 🚀 Added
@@ -32,5 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Modern UI**: Fully reactive interface built with React, HeroUI, and Tailwind CSS.
 
 ---
+[0.1.2]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Pepegakac123/eclat/releases/tag/v0.1.0
