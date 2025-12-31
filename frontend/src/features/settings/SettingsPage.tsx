@@ -189,66 +189,12 @@ export default function SettingsPage() {
 
 	return (
 		<div className="w-full mx-auto p-6 space-y-8">
-			{/* SEKCJA 1: HEADER & SCANNER CONTROL */}
-			<div className="flex flex-col md:flex-row justify-between items-center gap-4">
-				<div>
-					<h1 className="text-3xl font-bold tracking-tight">
-						Library Settings
-					</h1>
-					<p className="text-default-500">
-						Manage your asset folders and scanner status.
-					</p>
-				</div>
-
-				<Card className="w-full md:w-auto border-none bg-content2">
-					<CardBody className="flex flex-row items-center gap-4 p-3">
-						<div className="flex flex-col">
-							<span className="text-xs font-semibold uppercase text-default-500">
-								Scanner Status
-							</span>
-							<div className="flex items-center gap-2">
-								<span
-									className={`text-sm font-bold ${
-										isScanning ? "text-success" : "text-default-400"
-									}`}
-								>
-									<span>{message}</span>
-								</span>
-
-								{isScanning && (
-									<CircularProgress
-										size="sm"
-										value={progress}
-										color="success"
-										showValueLabel={true}
-										strokeWidth={4}
-										classNames={{
-											svg: "w-8 h-8",
-											value: "text-[10px]",
-										}}
-										aria-label="Scanning progress"
-									/>
-								)}
-							</div>
-						</div>
-
-						<Divider orientation="vertical" className="h-8" />
-
-						<Button
-							color={isScanning ? "danger" : "primary"}
-							variant="shadow"
-							isLoading={isStartingScan}
-							isDisabled={isScanning}
-							startContent={
-								!isStartingScan &&
-								(isScanning ? <StopCircle size={18} /> : <Play size={18} />)
-							}
-							onPress={() => startScan()}
-						>
-							{isScanning ? "Scanning..." : "Scan Now"}
-						</Button>
-					</CardBody>
-				</Card>
+			{/* SEKCJA 1: HEADER */}
+			<div className="flex flex-col gap-1">
+				<h1 className="text-3xl font-bold tracking-tight">Library Settings</h1>
+				<p className="text-default-500">
+					Manage your asset folders and scanner status.
+				</p>
 			</div>
 
 			{/* SEKCJA 2: ADD NEW FOLDER */}
@@ -313,6 +259,70 @@ export default function SettingsPage() {
 							<p className="text-tiny text-default-400">
 								We will automatically check if this folder exists.
 							</p>
+						</div>
+					</div>
+				</CardBody>
+			</Card>
+
+			{/* SEKCJA 2.5: QUICK SCAN CONTROL */}
+			<Card className="w-full border-none bg-content2/50" shadow="none">
+				<CardBody className="p-4 sm:p-6">
+					<div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+						{/* LEWA STRONA: OPIS */}
+						<div className="flex flex-col gap-1 text-center sm:text-left">
+							<h4 className="text-medium font-bold">Refresh Library</h4>
+							<p className="text-small text-default-500 max-w-md">
+								Scan your folders to find new assets or update changes you've
+								made.
+							</p>
+						</div>
+
+						{/* PRAWA STRONA: STATUS + BUTTON */}
+						<div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 w-full sm:w-auto">
+							{/* STATUS INDICATOR */}
+							<div className="flex flex-col items-center sm:items-end min-w-[120px]">
+								<span className="text-[10px] font-bold uppercase text-default-400 tracking-wider mb-1">
+									Scanner Status
+								</span>
+								<div className="flex items-center gap-2 h-6">
+									{isScanning && (
+										<CircularProgress
+											size="sm"
+											value={progress}
+											color="success"
+											strokeWidth={3}
+											classNames={{
+												svg: "w-4 h-4",
+											}}
+											aria-label="Scanning progress"
+										/>
+									)}
+									<span
+										className={`text-small font-semibold transition-colors ${
+											isScanning ? "text-success" : "text-default-500"
+										}`}
+									>
+										{message}
+									</span>
+								</div>
+							</div>
+
+							{/* ACTION BUTTON */}
+							<Button
+								color={isScanning ? "danger" : "primary"}
+								variant="shadow"
+								size="lg"
+								isLoading={isStartingScan}
+								isDisabled={isScanning}
+								startContent={
+									!isStartingScan &&
+									(isScanning ? <StopCircle size={20} /> : <Play size={20} />)
+								}
+								onPress={() => startScan()}
+								className="font-bold min-w-[140px] w-full sm:w-auto"
+							>
+								{isScanning ? "Stop Scan" : "Scan Now"}
+							</Button>
 						</div>
 					</div>
 				</CardBody>
