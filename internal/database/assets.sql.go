@@ -319,15 +319,21 @@ func (q *Queries) GetAssetByPath(ctx context.Context, filePath string) (Asset, e
 }
 
 const getAssetsByGroupID = `-- name: GetAssetsByGroupID :many
-SELECT id, file_name, file_path
+SELECT id, file_name, file_path, file_type, file_size, last_modified, file_hash, thumbnail_path
 FROM assets
 WHERE group_id = ? AND is_deleted = 0
+ORDER BY last_modified DESC
 `
 
 type GetAssetsByGroupIDRow struct {
-	ID       int64  `json:"id"`
-	FileName string `json:"fileName"`
-	FilePath string `json:"filePath"`
+	ID            int64          `json:"id"`
+	FileName      string         `json:"fileName"`
+	FilePath      string         `json:"filePath"`
+	FileType      string         `json:"fileType"`
+	FileSize      int64          `json:"fileSize"`
+	LastModified  time.Time      `json:"lastModified"`
+	FileHash      sql.NullString `json:"fileHash"`
+	ThumbnailPath string         `json:"thumbnailPath"`
 }
 
 func (q *Queries) GetAssetsByGroupID(ctx context.Context, groupID string) ([]GetAssetsByGroupIDRow, error) {
@@ -339,7 +345,16 @@ func (q *Queries) GetAssetsByGroupID(ctx context.Context, groupID string) ([]Get
 	var items []GetAssetsByGroupIDRow
 	for rows.Next() {
 		var i GetAssetsByGroupIDRow
-		if err := rows.Scan(&i.ID, &i.FileName, &i.FilePath); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.FileName,
+			&i.FilePath,
+			&i.FileType,
+			&i.FileSize,
+			&i.LastModified,
+			&i.FileHash,
+			&i.ThumbnailPath,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -357,10 +372,10 @@ const getLibraryStats = `-- name: GetLibraryStats :one
 SELECT
     COUNT(*) as total_count,
     CAST(COALESCE(SUM(file_size), 0) AS INTEGER) as total_size,
-    MAX(a.last_scanned) as last_scan
+    COALESCE(MAX(f.last_scanned), MAX(a.last_scanned)) as last_scan
 FROM assets a
 JOIN scan_folders f ON a.scan_folder_id = f.id
-WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1 AND is_hidden = 0
+WHERE a.is_deleted = 0 AND f.is_deleted = 0 AND f.is_active = 1
 `
 
 type GetLibraryStatsRow struct {
@@ -1191,5 +1206,21 @@ type UpdateAssetTypeParams struct {
 
 func (q *Queries) UpdateAssetType(ctx context.Context, arg UpdateAssetTypeParams) error {
 	_, err := q.exec(ctx, q.updateAssetTypeStmt, updateAssetType, arg.FileType, arg.ID)
+	return err
+}
+
+const updateAssetsLastScannedInFolder = `-- name: UpdateAssetsLastScannedInFolder :exec
+UPDATE assets
+SET last_scanned = ?
+WHERE scan_folder_id = ? AND is_deleted = 0
+`
+
+type UpdateAssetsLastScannedInFolderParams struct {
+	LastScanned  time.Time     `json:"lastScanned"`
+	ScanFolderID sql.NullInt64 `json:"scanFolderId"`
+}
+
+func (q *Queries) UpdateAssetsLastScannedInFolder(ctx context.Context, arg UpdateAssetsLastScannedInFolderParams) error {
+	_, err := q.exec(ctx, q.updateAssetsLastScannedInFolderStmt, updateAssetsLastScannedInFolder, arg.LastScanned, arg.ScanFolderID)
 	return err
 }

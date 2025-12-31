@@ -71,8 +71,9 @@ type Querier interface {
 	UpdateAssetMetadata(ctx context.Context, arg UpdateAssetMetadataParams) (Asset, error)
 	UpdateAssetScanStatus(ctx context.Context, arg UpdateAssetScanStatusParams) error
 	UpdateAssetType(ctx context.Context, arg UpdateAssetTypeParams) error
+	UpdateAssetsLastScannedInFolder(ctx context.Context, arg UpdateAssetsLastScannedInFolderParams) error
 	UpdateMaterialSet(ctx context.Context, arg UpdateMaterialSetParams) error
-	UpdateScanFolderLastScanned(ctx context.Context, id int64) error
+	UpdateScanFolderLastScanned(ctx context.Context, arg UpdateScanFolderLastScannedParams) error
 	UpdateScanFolderStatus(ctx context.Context, arg UpdateScanFolderStatusParams) error
 }
 

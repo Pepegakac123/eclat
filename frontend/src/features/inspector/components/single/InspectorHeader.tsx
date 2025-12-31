@@ -10,10 +10,13 @@ import {
   RefreshCw,
   Layers,
   Edit3,
+  Maximize2,
 } from "lucide-react";
 import { app } from "@wailsjs/go/models";
 import { addToast } from "@heroui/toast";
-import { useAssetMutation } from "../../hooks/useAsset";
+import { useAssetActions } from "../../hooks/useAssetActions";
+import { ClipboardSetText } from "../../../../../wailsjs/runtime/runtime";
+import { GetThumbnailData } from "../../../../../wailsjs/go/app/AssetService";
 
 interface InspectorHeaderProps {
   asset: app.AssetDetails;
@@ -21,24 +24,72 @@ interface InspectorHeaderProps {
 
 export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
   const [localFileName, setLocalFileName] = useState(asset.fileName);
-  const { patch } = useAssetMutation(asset.id);
+  const [renameError, setRenameError] = useState("");
+  const [displayThumb, setDisplayThumb] = useState<string>("");
+  const { renameAsset, isRenaming, updateAssetType, isUpdatingType, openInProgram } = useAssetActions(asset.id);
 
   useEffect(() => {
     setLocalFileName(asset.fileName);
+    setRenameError("");
   }, [asset.fileName]);
+
+  useEffect(() => {
+    const loadThumb = async () => {
+      if (!asset.thumbnailPath) {
+        setDisplayThumb("/placeholders/generic_placeholder.webp");
+        return;
+      }
+
+      if (asset.thumbnailPath.startsWith("/placeholders/")) {
+        setDisplayThumb(asset.thumbnailPath);
+        return;
+      }
+
+      try {
+        const data = await GetThumbnailData(asset.id);
+        setDisplayThumb(data);
+      } catch (err) {
+        console.error("Failed to load thumbnail via Go", err);
+        setDisplayThumb("/placeholders/generic_placeholder.webp");
+      }
+    };
+
+    loadThumb();
+  }, [asset.thumbnailPath, asset.id]);
 
   // --- HANDLERS ---
   const handleSave = () => {
     const trimmed = localFileName.trim();
-    if (!trimmed || trimmed === asset.fileName) {
-      setLocalFileName(asset.fileName);
+    
+    // Validation
+    if (!trimmed) {
+      setRenameError("Filename cannot be empty");
       return;
     }
-    patch({ fileName: trimmed });
+    if (/[\\/:*?"<>|]/.test(trimmed)) {
+      setRenameError('Invalid characters: \ / : * ? " < > |');
+      return;
+    }
+    if (trimmed === asset.fileName) {
+      setLocalFileName(asset.fileName);
+      setRenameError("");
+      return;
+    }
+
+    renameAsset(trimmed, {
+      onSuccess: () => {
+        setRenameError("");
+      },
+      onError: (err: any) => {
+        setRenameError(err || "Failed to rename");
+        setLocalFileName(asset.fileName);
+      }
+    });
   };
 
   const handleCancel = () => {
     setLocalFileName(asset.fileName);
+    setRenameError("");
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -49,8 +100,13 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
     }
   };
 
-  const handleCopyPath = () => {
-    navigator.clipboard.writeText(asset.filePath);
+  const handleCopyPath = async (e?: any) => {
+    // Prevent bubbling if triggered from the button to avoid double toast
+    if (e && typeof e.stopPropagation === "function") {
+      e.stopPropagation();
+    }
+
+    await ClipboardSetText(asset.filePath);
     addToast({
       title: "Path Copied",
       description: "Copied to clipboard",
@@ -67,17 +123,30 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
 
   const handleConvertType = () => {
     const newType = isImage ? "texture" : "image";
-    patch({ fileType: newType });
-    addToast({
-      title: "Type Updated",
-      description: `Converted to ${newType}`,
-      color: "primary",
-      variant: "solid",
-    });
+    updateAssetType(newType);
   };
 
   return (
     <div className="flex-none p-4 flex flex-col gap-3 border-b border-default-100 bg-content1">
+      {/* 0. THUMBNAIL PREVIEW */}
+      <div className="flex justify-center mb-1">
+        <div 
+          className={`relative group overflow-hidden rounded-lg bg-default-100 border border-default-200 w-full aspect-video max-h-40 flex items-center justify-center ${isImage ? 'cursor-pointer' : ''}`}
+          onClick={() => isImage && openInProgram(asset.filePath)}
+        >
+          <img
+            src={displayThumb}
+            alt={asset.fileName}
+            className={`w-full h-full object-contain transition-transform duration-500 ${isImage ? 'group-hover:scale-110' : ''}`}
+          />
+          {isImage && (
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+              <Maximize2 size={24} className="text-white drop-shadow-md" />
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* 1. SEKCJA TYTUŁU */}
       <div className="flex flex-col gap-1 group/title">
         <span className="text-[10px] uppercase font-bold text-default-400 tracking-wider flex items-center gap-1 justify-between">
@@ -92,11 +161,17 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
         <Input
           variant="underlined"
           value={localFileName}
-          onValueChange={setLocalFileName}
+          onValueChange={(val) => {
+            setLocalFileName(val);
+            if (renameError) setRenameError("");
+          }}
           onBlur={handleSave}
           onKeyDown={handleKeyDown}
           size="lg"
           placeholder="Enter asset name"
+          isInvalid={!!renameError}
+          errorMessage={renameError}
+          isDisabled={isRenaming}
           classNames={{
             input:
               "font-bold text-medium text-default-900 group-hover/title:text-primary transition-colors",
@@ -104,7 +179,7 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
               "border-b-default-200 group-hover/title:border-b-primary/50 px-0 h-4 transition-colors",
           }}
           endContent={
-            localFileName !== asset.fileName && (
+            localFileName !== asset.fileName && !isRenaming && (
               <div className="flex gap-1 animate-appearance-in">
                 <button
                   type="button"
@@ -133,7 +208,7 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
         </span>
         <div
           className="flex items-center gap-2 group p-2 rounded-medium bg-default-100 border border-default-200 cursor-pointer hover:bg-default-200 transition-colors"
-          onClick={handleCopyPath}
+          onClick={() => handleCopyPath()}
           title={asset.filePath}
         >
           <div className="flex-1 truncate font-mono text-tiny text-default-600">
@@ -145,6 +220,7 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
               isIconOnly
               variant="light"
               className="h-6 w-6 min-w-0 text-default-400 group-hover:text-default-700"
+              onClick={handleCopyPath}
             >
               <Copy size={12} />
             </Button>
@@ -173,6 +249,7 @@ export const InspectorHeader = ({ asset }: InspectorHeaderProps) => {
                 className="h-6 text-[12px] font-medium px-2 flex flex-row items-center"
                 startContent={<RefreshCw size={10} />}
                 onPress={handleConvertType}
+                isLoading={isUpdatingType}
               >
                 To {isImage ? "Texture" : "Image"}
               </Button>

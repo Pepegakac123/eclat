@@ -197,8 +197,26 @@ func (s *Scanner) StartScan() error {
 		close(results)   // Close results to let Collector finish
 		foundOnDisk = <-collectorDone
 
+		// Update LastScanned for all processed folders and their assets
+		now := time.Now()
+		for _, f := range folders {
+			if err := s.db.UpdateScanFolderLastScanned(scanCtx, database.UpdateScanFolderLastScannedParams{
+				ID:          f.ID,
+				LastScanned: sql.NullTime{Time: now, Valid: true},
+			}); err != nil {
+				s.logger.Error("Failed to update scan folder timestamp", "id", f.ID, "error", err)
+			}
+
+			// Update all non-deleted assets in this folder to the same scan time
+			if err := s.db.UpdateAssetsLastScannedInFolder(scanCtx, database.UpdateAssetsLastScannedInFolderParams{
+				ScanFolderID: sql.NullInt64{Int64: f.ID, Valid: true},
+				LastScanned:  now,
+			}); err != nil {
+				s.logger.Error("Failed to update assets timestamps in folder", "id", f.ID, "error", err)
+			}
+		}
+
 		s.logger.Info("Scanner finished", "total", totalToProcess)
-		s.notifier.SendScannerStatus(s.ctx, feedback.Idle)
 
 		// 7. Mark-and-Sweep Cleanup:
 		// Any asset in DB (existingAssets) that was NOT found in the current scan (foundOnDisk)
@@ -207,15 +225,23 @@ func (s *Scanner) StartScan() error {
 			"db_cache_size", len(existingAssets),
 			"found_on_disk", len(foundOnDisk))
 
+		cleanupCount := 0
 		for path, cached := range existingAssets {
 			if !foundOnDisk[cached.FilePath] {
 				if !cached.IsDeleted {
 					s.logger.Info("Asset missing or invalid extension - Soft Deleting", "path", path)
-					s.db.SoftDeleteAsset(scanCtx, cached.ID)
+					if err := s.db.SoftDeleteAsset(scanCtx, cached.ID); err == nil {
+						cleanupCount++
+					}
 				}
 			}
 		}
 
+		s.notifier.EmitAssetsChanged(s.ctx)
+		s.notifier.SendScannerStatus(s.ctx, feedback.Idle)
+		if cleanupCount > 0 {
+			s.logger.Info("Cleanup finished", "deleted_count", cleanupCount)
+		}
 	}()
 	return nil
 }
@@ -567,7 +593,7 @@ func (s *Scanner) generateAssetMetadata(ctx context.Context, path string, entry 
 
 	hasValidDimensions := thumb.Metadata.Width > 0 && thumb.Metadata.Height > 0
 	newAsset := database.CreateAssetParams{
-		ScanFolderID:    sql.NullInt64{Int64: folderId, Valid: true},
+		ScanFolderID:    sql.NullInt64{Int64: folderId, Valid: folderId > 0},
 		GroupID:         targetGroupID,
 		FileName:        entry.Name(),
 		FilePath:        path,
@@ -648,7 +674,10 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 	if fileMissing {
 		if isKnown && !asset.IsDeleted {
 			s.logger.Info("🗑️ Soft Deleting asset", "path", path)
-			return s.db.SoftDeleteAsset(ctx, asset.ID)
+			if err := s.db.SoftDeleteAsset(ctx, asset.ID); err != nil {
+				return err
+			}
+			s.notifier.EmitAssetsChanged(s.ctx)
 		}
 		return nil
 	}
@@ -666,7 +695,11 @@ func (s *Scanner) ScanFile(ctx context.Context, path string) error {
 
 	folderID, err := s.resolveFolderID(ctx, path)
 	if err != nil {
-		s.logger.Warn("Could not resolve ScanFolder ID for file", "path", path)
+		s.logger.Warn("Could not resolve ScanFolder ID for file (it will be excluded from gallery)", "path", path)
+		// If it's a new file and we can't find a folder, we might want to skip it
+		if !isKnown {
+			return nil
+		}
 	}
 
 	fileType := DetermineFileType(ext)

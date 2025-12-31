@@ -86,6 +86,20 @@ export const InspectorProperties = ({ asset }: InspectorPropertiesProps) => {
           value={localDescription}
           onValueChange={setLocalDescription}
           onBlur={handleDescriptionSave}
+          maxLength={500}
+          description={
+            <div
+              className={`flex justify-between w-full text-[10px] mt-1 ${
+                localDescription.length >= 500
+                  ? "text-danger font-bold"
+                  : "text-default-400"
+              }`}
+            >
+              <span>Max 500 characters</span>
+              <span>{localDescription.length} / 500</span>
+            </div>
+          }
+          isInvalid={localDescription.length >= 500}
           classNames={{
             input: "text-small",
             inputWrapper:

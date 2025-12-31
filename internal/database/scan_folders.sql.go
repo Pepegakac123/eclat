@@ -7,6 +7,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 )
 
 const createScanFolder = `-- name: CreateScanFolder :one
@@ -127,12 +128,17 @@ func (q *Queries) SoftDeleteScanFolder(ctx context.Context, id int64) error {
 
 const updateScanFolderLastScanned = `-- name: UpdateScanFolderLastScanned :exec
 UPDATE scan_folders
-SET last_scanned = CURRENT_TIMESTAMP
+SET last_scanned = ?
 WHERE id = ?
 `
 
-func (q *Queries) UpdateScanFolderLastScanned(ctx context.Context, id int64) error {
-	_, err := q.exec(ctx, q.updateScanFolderLastScannedStmt, updateScanFolderLastScanned, id)
+type UpdateScanFolderLastScannedParams struct {
+	LastScanned sql.NullTime `json:"lastScanned"`
+	ID          int64        `json:"id"`
+}
+
+func (q *Queries) UpdateScanFolderLastScanned(ctx context.Context, arg UpdateScanFolderLastScannedParams) error {
+	_, err := q.exec(ctx, q.updateScanFolderLastScannedStmt, updateScanFolderLastScanned, arg.LastScanned, arg.ID)
 	return err
 }
 

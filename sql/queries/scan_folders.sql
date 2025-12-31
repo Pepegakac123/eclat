@@ -23,7 +23,7 @@ WHERE id = ?;
 
 -- name: UpdateScanFolderLastScanned :exec
 UPDATE scan_folders
-SET last_scanned = CURRENT_TIMESTAMP
+SET last_scanned = ?
 WHERE id = ?;
 
 -- name: SoftDeleteScanFolder :exec

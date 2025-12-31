@@ -9,6 +9,7 @@ import {
 	RenameAsset,
 	SetAssetHidden,
 	ToggleAssetFavorite,
+	UpdateAssetType,
 } from "../../../../wailsjs/go/app/AssetService";
 import { app } from "../../../../wailsjs/go/models";
 
@@ -174,6 +175,27 @@ export const useAssetActions = (assetId: number) => {
 		},
 	});
 
+	// 7. UPDATE ASSET TYPE
+	const updateTypeMutation = useMutation({
+		mutationFn: (newType: string) => UpdateAssetType(assetId, newType),
+		onSuccess: (_, newType) => {
+			addToast({
+				title: "Type Updated",
+				description: `Converted to ${newType}`,
+				color: "primary",
+			});
+			queryClient.invalidateQueries({ queryKey: ["assets"] });
+			queryClient.invalidateQueries({ queryKey: ["asset", assetId] });
+		},
+		onError: (err) => {
+			addToast({
+				title: "Error",
+				description: "Failed to update asset type: " + err,
+				color: "danger",
+			});
+		},
+	});
+
 	return {
 		toggleFavorite: favoriteMutation.mutate,
 		toggleHidden: hiddenMutation.mutate,
@@ -181,9 +203,11 @@ export const useAssetActions = (assetId: number) => {
 		openInProgram: programMutation.mutate,
 		deleteAsset: deleteMutation.mutate,
 		renameAsset: renameMutation.mutate,
+		updateAssetType: updateTypeMutation.mutate,
 		isTogglingFav: favoriteMutation.isPending,
 		isTogglingHidden: hiddenMutation.isPending,
 		isDeleting: deleteMutation.isPending,
 		isRenaming: renameMutation.isPending,
+		isUpdatingType: updateTypeMutation.isPending,
 	};
 };
