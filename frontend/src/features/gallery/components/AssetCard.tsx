@@ -37,6 +37,7 @@ import { useEffect, useState } from "react";
 import { API_BASE_URL } from "@/config/constants";
 import { AddToCollectionModal } from "@/features/inspector/components/single/AddToCollectionModal";
 import { useAssetActions } from "@/features/inspector/hooks/useAssetActions";
+import { DeleteAssetModal } from "./DeleteAssetModal";
 
 interface AssetCardProps {
 	asset: app.AssetDetails;
@@ -349,37 +350,13 @@ export const AssetCard = ({
 				</CardFooter>
 			</Card>
 
-			{/* Delete Modal */}
-			<Modal isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)}>
-				<ModalContent>
-					{(onClose) => (
-						<>
-							<ModalHeader className="flex flex-col gap-1">
-								Delete Asset
-							</ModalHeader>
-							<ModalBody>
-								<p>
-									Are you sure you want to permanently delete <b>{fileName}</b>?
-									This action cannot be undone and the file will be removed from
-									your disk.
-								</p>
-							</ModalBody>
-							<ModalFooter>
-								<Button color="default" variant="light" onPress={onClose}>
-									Cancel
-								</Button>
-								<Button
-									color="danger"
-									onPress={handleDeleteConfirm}
-									isLoading={isDeleting}
-								>
-									Delete
-								</Button>
-							</ModalFooter>
-						</>
-					)}
-				</ModalContent>
-			</Modal>
+			<DeleteAssetModal
+				isOpen={isDeleteOpen}
+				onClose={() => setIsDeleteOpen(false)}
+				onConfirm={handleDeleteConfirm}
+				fileName={fileName}
+				isLoading={isDeleting}
+			/>
 
 			{/* Rename Modal */}
 			<Modal isOpen={isRenameOpen} onClose={() => setIsRenameOpen(false)}>
