@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Spinner } from "@heroui/spinner";
 import { Database, FileImage, Clock, Server } from "lucide-react";
 import { useLibraryStats } from "../hooks/useLibraryStats";
+import { GetAppVersion } from "@wailsjs/go/app/App";
 
 const formatFileSize = (bytes: number) => {
   if (bytes === 0) return "0 B";
@@ -40,6 +41,12 @@ const StatItem = ({
 
 export const InspectorLibraryStats = () => {
   const { data: stats, isLoading, isError } = useLibraryStats();
+  const [version, setVersion] = useState<string>("...");
+
+  useEffect(() => {
+    GetAppVersion().then(setVersion).catch(console.error);
+  }, []);
+
   console.log(stats);
   if (isLoading) {
     return (
@@ -99,9 +106,10 @@ export const InspectorLibraryStats = () => {
 
       <div className="mt-auto p-4 rounded-xl bg-gradient-to-br from-default-100 to-default-50 border border-default-200">
         <p className="text-tiny text-center text-default-500">
-          Eclat Asset Manager v0.1.0
+          Eclat Asset Manager v{version}
         </p>
       </div>
     </div>
   );
 };
+

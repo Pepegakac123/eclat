@@ -9,5 +9,9 @@
   "author": {
     "name": "Pepegakac123",
     "email": "kacpperr.adamczyk@gmail.com"
+  },
+  "info": {
+    "productVersion": "0.1.0",
+    "fileVersion": "0.1.0"
   }
 }

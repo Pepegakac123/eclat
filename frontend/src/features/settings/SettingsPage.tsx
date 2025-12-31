@@ -25,6 +25,7 @@ import { useScanProgress } from "./hooks/useScanProgress";
 import { addToast } from "@heroui/toast";
 import { EventsOn, OnFileDrop } from "@wailsjs/runtime/runtime";
 import { useToastListener } from "@/hooks/useToastListener";
+import { GetAppVersion } from "@wailsjs/go/app/App";
 
 export default function SettingsPage() {
   const {
@@ -46,9 +47,15 @@ export default function SettingsPage() {
 
   const [pathInput, setPathInput] = useState("");
   const [extInput, setExtInput] = useState("");
+  const [version, setVersion] = useState<string>("");
   const [validationState, setValidationState] = useState<
     "valid" | "invalid" | "idle"
   >("idle");
+
+  useEffect(() => {
+    GetAppVersion().then(setVersion);
+  }, []);
+
   const [backendError, setBackendError] = useState<string>("");
   const { isScanning, progress, message } = useScanProgress();
 
@@ -423,6 +430,12 @@ export default function SettingsPage() {
             </div>
           </CardBody>
         </Card>
+      </div>
+
+      {/* SEKCJA 5: ABOUT */}
+      <div className="pt-8 border-t border-default-100 flex justify-between items-center text-default-400 text-tiny">
+        <p>© 2025 Eclat Asset Manager</p>
+        <p>Version {version}</p>
       </div>
     </div>
   );
