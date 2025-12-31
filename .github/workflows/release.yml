@@ -71,7 +71,7 @@ jobs:
           mkdir -p release-artifacts
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             # Wails build -nsis produces <outputfilename>-installer.exe
-            mv build/bin/eclat-installer.exe release-artifacts/${{ matrix.artifact_name }}
+            mv build/bin/*installer.exe release-artifacts/${{ matrix.artifact_name }}
           elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
             mv build/bin/eclat release-artifacts/${{ matrix.artifact_name }}
           elif [ "${{ matrix.os }}" = "macos-latest" ]; then
