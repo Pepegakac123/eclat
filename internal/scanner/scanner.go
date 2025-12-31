@@ -38,8 +38,9 @@ type Scanner struct {
 	// Since database writes are batched, a worker might process a duplicate file
 	// before its "original" is committed. This cache allows workers to share
 	// newly generated GroupIDs for identical hashes instantly.
-	sessionMu    sync.Mutex
-	sessionCache map[string]string
+	sessionMu             sync.Mutex
+	sessionCache          map[string]string
+	sessionHeuristicCache map[string]string
 }
 
 // ScanJob represents a single file scanning task to be processed by a worker.
@@ -85,13 +86,14 @@ func (s *Scanner) Shutdown() {
 // It requires a database connection, a thumbnail generator, a logger, and configuration.
 func NewScanner(conn *sql.DB, db database.Querier, thumbGen ThumbnailGenerator, logger *slog.Logger, notifier feedback.Notifier, cfg *config.ScannerConfig) *Scanner {
 	return &Scanner{
-		conn:         conn,
-		db:           db,
-		logger:       logger,
-		config:       cfg,
-		thumbGen:     thumbGen,
-		notifier:     notifier,
-		sessionCache: make(map[string]string),
+		conn:                  conn,
+		db:                    db,
+		logger:                logger,
+		config:                cfg,
+		thumbGen:              thumbGen,
+		notifier:              notifier,
+		sessionCache:          make(map[string]string),
+		sessionHeuristicCache: make(map[string]string),
 	}
 }
 
@@ -120,6 +122,7 @@ func (s *Scanner) StartScan() error {
 	// Initialize session cache for this specific scan run.
 	s.sessionMu.Lock()
 	s.sessionCache = make(map[string]string)
+	s.sessionHeuristicCache = make(map[string]string)
 	s.sessionMu.Unlock()
 
 	// Channels for the pipeline:
@@ -302,8 +305,10 @@ func (s *Scanner) Worker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Sc
 		s.logger.Debug("Determined file type", "path", job.Path, "type", fileType)
 
 		if exist.ID > 0 {
+			s.logger.Debug("Asset exists in DB", "id", exist.ID, "path", job.Path, "is_deleted", exist.IsDeleted)
 			s.processExistingAsset(ctx, &result, exist, job, fileType, hash)
 		} else {
+			s.logger.Debug("Asset is NEW", "path", job.Path)
 			s.processNewAsset(ctx, &result, job, fileType, hash)
 		}
 
@@ -328,22 +333,22 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 	if hash != "" {
 		existingDuplicate, err := s.db.GetAssetByHash(ctx, sql.NullString{String: hash, Valid: true})
 		if err == nil {
-			s.logger.Info("🔗 Exact Duplicate found (DB)",
+			s.logger.Debug("🔗 Exact Duplicate found (DB)",
 				"new_path", job.Path,
 				"group_id", existingDuplicate.GroupID)
 			targetGroupID = existingDuplicate.GroupID
 			foundMatch = true
+		} else if err != sql.ErrNoRows {
+			s.logger.Error("DB Hash lookup error", "hash", hash, "error", err)
 		}
 	}
 
 	// === PLAN A.5: EXACT MATCH (HASH) - SESSION CACHE LOOKUP ===
 	// Check if another worker found this same file content in this current scan session.
-	// This handles the case where we have 2 copies of a new file; one worker processes Copy A,
-	// assigns a new GroupID, and caches it. The second worker processing Copy B hits this cache.
 	if !foundMatch && hash != "" {
 		s.sessionMu.Lock()
 		if cachedGroupID, ok := s.sessionCache[hash]; ok {
-			s.logger.Info("🔗 Exact Duplicate found (Session Cache)",
+			s.logger.Debug("🔗 Exact Duplicate found (Session Cache)",
 				"new_path", job.Path,
 				"group_id", cachedGroupID)
 			targetGroupID = cachedGroupID
@@ -354,11 +359,11 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 
 	// === PLAN B: HEURISTIC MATCH (NAME) ===
 	// If hashes don't match (or file too big to hash), try to guess relationships based on filenames.
-	// Useful for grouping texture sets (e.g., "Wood_Color.png", "Wood_Normal.png").
 	if !foundMatch {
+		s.logger.Debug("🧠 No exact hash match, trying heuristics", "path", job.Path)
 		matchedGroupID, found := s.TryHeuristicMatch(ctx, job.FolderId, job.Entry.Name())
 		if found {
-			s.logger.Info("🧠 Heuristic Match found (Name)",
+			s.logger.Debug("🧠 Heuristic Match found (Name)",
 				"new_path", job.Path,
 				"group_id", matchedGroupID)
 			targetGroupID = matchedGroupID
@@ -368,21 +373,24 @@ func (s *Scanner) processNewAsset(ctx context.Context, result *ScanResult, job S
 
 	// If no match found, this is a completely unique new asset.
 	if !foundMatch {
+		s.logger.Debug("✨ No match found, creating new group", "path", job.Path)
+		targetGroupID = uuid.New().String()
+
+		s.sessionMu.Lock()
+		// Cache by hash
 		if hash != "" {
-			s.sessionMu.Lock()
-			// Double-check locking pattern: checking if another worker updated the cache
-			// while we were performing heuristic checks.
-			if cached, ok := s.sessionCache[hash]; ok {
-				targetGroupID = cached
-				foundMatch = true
-			} else {
-				targetGroupID = uuid.New().String()
-				s.sessionCache[hash] = targetGroupID
-			}
-			s.sessionMu.Unlock()
-		} else {
-			targetGroupID = uuid.New().String()
+			s.sessionCache[hash] = targetGroupID
+			s.logger.Debug("✨ Cached new group ID for hash", "hash", hash, "group_id", targetGroupID)
 		}
+
+		// Cache by heuristic (base name)
+		baseName := s.getBaseName(job.Entry.Name())
+		if len(baseName) >= 3 {
+			cacheKey := fmt.Sprintf("%d:%s", job.FolderId, baseName)
+			s.sessionHeuristicCache[cacheKey] = targetGroupID
+			s.logger.Debug("✨ Cached new group ID for base name", "base", baseName, "group_id", targetGroupID)
+		}
+		s.sessionMu.Unlock()
 	}
 
 	newAsset, err := s.generateAssetMetadata(ctx, job.Path, job.Entry, job.FolderId, fileType, hash, targetGroupID)

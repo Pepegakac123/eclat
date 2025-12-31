@@ -37,8 +37,9 @@ func (nw *NoOpWatcher) Unwatch(path string) {}
 func TestSettings_ValidatePath(t *testing.T) {
 	mockNotifier := &MockNotifier{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logLevel := &slog.LevelVar{}
 	// Tutaj nil dla DB jest OK, bo ValidatePath używa tylko os.Stat
-	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
+	svc := NewSettingsService(nil, logger, logLevel, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 
 	t.Run("Should return true for existing directory", func(t *testing.T) {
 		tempDir := t.TempDir()
@@ -68,8 +69,9 @@ func TestSettings_ConfigUpdates(t *testing.T) {
 	mockNotifier := &MockNotifier{}
 
 	cfg := config.NewScannerConfig()
+	logLevel := &slog.LevelVar{}
 	// POPRAWKA 2: Przekazujemy queries zamiast nil
-	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, cfg)
+	svc := NewSettingsService(queries, logger, logLevel, mockNotifier, &NoOpWatcher{}, cfg)
 
 	// POPRAWKA 3: Inicjalizujemy kontekst, bo baza go wymaga
 	ctx := context.Background()
@@ -116,7 +118,8 @@ func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
+	logLevel := &slog.LevelVar{}
+	svc := NewSettingsService(queries, logger, logLevel, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 	ctx := context.Background()
 	svc.Startup(ctx)
 
@@ -173,7 +176,8 @@ func TestSettings_ScanFolder_CRUD_FullFlow(t *testing.T) {
 func TestSettings_FolderPicker_Mock(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(nil, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
+	logLevel := &slog.LevelVar{}
+	svc := NewSettingsService(nil, logger, logLevel, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 	svc.Startup(context.Background())
 
 	t.Run("Successful Selection", func(t *testing.T) {
@@ -190,7 +194,8 @@ func TestSettings_FindBestParent_Logic(t *testing.T) {
 	_, queries := setupTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
+	logLevel := &slog.LevelVar{}
+	svc := NewSettingsService(queries, logger, logLevel, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 	ctx := context.Background()
 	svc.Startup(ctx)
 
@@ -209,7 +214,8 @@ func TestSettings_FindBestParent_Logic(t *testing.T) {
 
 func TestSettings_MapToDTO_Scenarios(t *testing.T) {
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(nil, nil, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
+	logLevel := &slog.LevelVar{}
+	svc := NewSettingsService(nil, nil, logLevel, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 
 	t.Run("Map with LastScanned NULL", func(t *testing.T) {
 		f := database.ScanFolder{LastScanned: sql.NullTime{Valid: false}, DateAdded: time.Now()}
@@ -234,7 +240,8 @@ func TestSettings_UpdateFolderStatus_Logic(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockNotifier := &MockNotifier{}
-	svc := NewSettingsService(queries, logger, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
+	logLevel := &slog.LevelVar{}
+	svc := NewSettingsService(queries, logger, logLevel, mockNotifier, &NoOpWatcher{}, config.NewScannerConfig())
 	svc.Startup(ctx)
 	path := filepath.Join(root, "test.png")
 	createDummyFile(t, path)

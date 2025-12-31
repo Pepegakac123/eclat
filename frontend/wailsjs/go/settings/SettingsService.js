@@ -34,6 +34,10 @@ export function SetAllowedExtensions(arg1) {
   return window['go']['settings']['SettingsService']['SetAllowedExtensions'](arg1);
 }
 
+export function SetDebugMode(arg1) {
+  return window['go']['settings']['SettingsService']['SetDebugMode'](arg1);
+}
+
 export function Startup(arg1) {
   return window['go']['settings']['SettingsService']['Startup'](arg1);
 }

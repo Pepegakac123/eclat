@@ -46,6 +46,7 @@ type Dependencies struct {
 	DB                 *sql.DB
 	LogFile            *os.File
 	Logger             *slog.Logger
+	LogLevel           *slog.LevelVar
 	App                *app.App
 	AssetService       *app.AssetService
 	MaterialSetService *app.MaterialSetService
@@ -91,6 +92,7 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 	}
 
 	// 2. Setup Logger
+	logLevel := &slog.LevelVar{} // Defaults to Info
 	currentTime := time.Now().Format("2006-01-02")
 	logFilePath := filepath.Join(logsFolder, fmt.Sprintf("app-%s.log", currentTime))
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
@@ -100,7 +102,7 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 
 	multiWriter := io.MultiWriter(os.Stdout, &syncedWriter{f: logFile})
 	programLogger := slog.New(slog.NewTextHandler(multiWriter, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: logLevel,
 	}))
 	slog.SetDefault(programLogger)
 
@@ -129,6 +131,14 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 	ctx := context.Background()
 
 	programLogger.Info("Loading system settings...")
+	
+	// Restore log level
+	debugMode, err := queries.GetSystemSetting(ctx, "debug_mode")
+	if err == nil && debugMode == "true" {
+		logLevel.Set(slog.LevelDebug)
+		programLogger.Info("🐛 Debug mode enabled from settings")
+	}
+
 	storedExtsJSON, err := queries.GetSystemSetting(ctx, "allowed_extensions")
 	if err == nil && storedExtsJSON != "" {
 		var storedExts []string
@@ -158,7 +168,7 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 		log.Fatal("Failed to create watcher:", err)
 	}
 
-	settingsService := settings.NewSettingsService(queries, programLogger, notifier, watcherService, sharedConfig)
+	settingsService := settings.NewSettingsService(queries, programLogger, logLevel, notifier, watcherService, sharedConfig)
 	assetService := app.NewAssetService(queries, db, programLogger, notifier, thumbsFolder)
 	materialSetService := app.NewMaterialSetService(queries, programLogger, diskThumbGen)
 	tagService := app.NewTagService(queries, programLogger)
@@ -173,6 +183,7 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 		DB:                 db,
 		LogFile:            logFile,
 		Logger:             programLogger,
+		LogLevel:           logLevel,
 		App:                myApp,
 		AssetService:       assetService,
 		MaterialSetService: materialSetService,
