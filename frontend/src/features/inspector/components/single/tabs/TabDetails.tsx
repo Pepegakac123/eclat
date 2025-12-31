@@ -74,7 +74,7 @@ export const TabDetails = ({ asset }: { asset: app.AssetDetails }) => {
             icon={Calendar}
             value={new Date(asset.lastModified).toLocaleDateString()}
           />
-          {isImageOrTexture && asset.bitDepth && (
+          {isImageOrTexture && (asset.bitDepth ?? 0) > 0 && (
             <DetailTile 
               label="Bit Depth" 
               icon={Layers}
