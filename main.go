@@ -29,8 +29,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Fatal Error during initialization: %v", err)
 	}
-	// Ensure DB is closed when main exits
-	defer deps.DB.Close()
+	// Ensure resources (DB, LogFile) are closed when main exits
+	defer deps.Close()
 
 	// Run Wails application
 	err = wails.Run(&options.App{

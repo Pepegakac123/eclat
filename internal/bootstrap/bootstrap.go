@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"eclat/internal/app"
 	"eclat/internal/config"
@@ -25,9 +26,24 @@ import (
 	_ "modernc.org/sqlite" // SQLite driver
 )
 
+// syncedWriter ensures that every write is followed by a Sync() call on Windows,
+// preventing empty/broken log files when viewed while the app is running.
+type syncedWriter struct {
+	f *os.File
+}
+
+func (w *syncedWriter) Write(p []byte) (n int, err error) {
+	n, err = w.f.Write(p)
+	if err == nil && runtime.GOOS == "windows" {
+		_ = w.f.Sync()
+	}
+	return
+}
+
 // Dependencies holds all the initialized services and resources required by the application.
 type Dependencies struct {
 	DB                 *sql.DB
+	LogFile            *os.File
 	Logger             *slog.Logger
 	App                *app.App
 	AssetService       *app.AssetService
@@ -38,6 +54,16 @@ type Dependencies struct {
 	WatcherService     *watcher.Service
 	UpdateService      *update.UpdateService
 	ThumbnailsDir      string
+}
+
+// Close closes all open resources like the database and log file.
+func (d *Dependencies) Close() {
+	if d.DB != nil {
+		d.DB.Close()
+	}
+	if d.LogFile != nil {
+		d.LogFile.Close()
+	}
 }
 
 // Initialize performs the startup sequence: configuring directories, logger, database, and services.
@@ -69,9 +95,8 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
-	// Note: logFile is not closed here; the OS will close it on exit, which is acceptable for the main app logger.
 
-	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	multiWriter := io.MultiWriter(os.Stdout, &syncedWriter{f: logFile})
 	programLogger := slog.New(slog.NewTextHandler(multiWriter, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -141,6 +166,7 @@ func Initialize(migrations embed.FS) (*Dependencies, error) {
 
 	return &Dependencies{
 		DB:                 db,
+		LogFile:            logFile,
 		Logger:             programLogger,
 		App:                myApp,
 		AssetService:       assetService,
